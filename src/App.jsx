@@ -4,12 +4,13 @@ import { getDatabase, ref, onValue, set, update, remove } from 'firebase/databas
 
 // === Firebase 雲端初始化設定 ===
 const firebaseConfig = {
-  apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
+   apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
   authDomain: "er-omo.firebaseapp.com",
   projectId: "er-omo",
   storageBucket: "er-omo.firebasestorage.app",
   messagingSenderId: "402348034619",
-  appId: "1:402348034619:web:d756aa4bdd7bbab92e2a1e"
+  appId: "1:402348034619:web:d756aa4bdd7bbab92e2a1e",
+  measurementId: "G-PFMDWBMNHV"
 };
 
 const app = initializeApp(firebaseConfig);
