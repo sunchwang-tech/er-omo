@@ -3,13 +3,16 @@ import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, update, remove, get } from 'firebase/database';
 
 // === Firebase 雲端初始化設定 ===
+// === Firebase 雲端初始化設定 ===
 const firebaseConfig = {
   apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
   authDomain: "er-omo.firebaseapp.com",
+  databaseURL: "https://er-omo-default-rtdb.asia-southeast1.firebasedatabase.app/", // 新增這行試試看
   projectId: "er-omo",
   storageBucket: "er-omo.firebasestorage.app",
   messagingSenderId: "402348034619",
   appId: "1:402348034619:web:d756aa4bdd7bbab92e2a1e"
+};
 };
 
 const app = initializeApp(firebaseConfig);
