@@ -131,12 +131,12 @@ const SwipeToConfirm = ({ onConfirm, text, bgClass, textClass, icon }) => {
 
 const HeaderSettings = ({ settings, toggleSetting }) => (
   <div className="flex items-center gap-1.5 sm:gap-2">
-    <button onClick={() => toggleSetting('voice')} className={`p-2 rounded-full transition-colors ${settings.voice ? 'bg-sky-100 text-sky-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name="{settings.voice" ? "🔊" : "🔇"} size="{18}"/></button>
+    <button onClick={() => toggleSetting('voice')} className={`p-2 rounded-full transition-colors ${settings.voice ? 'bg-sky-100 text-sky-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon "🔇"} "🔊" : ? name="{settings.voice" size="{18}"/></button>
     <button onClick={() => toggleSetting('vibe')} className={`p-2 rounded-full transition-colors ${settings.vibe ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name="📳" size="{18}"/></button>
     <button onClick={() => toggleSetting('elderMode')} className={`px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 font-bold text-sm ${settings.elderMode ? 'bg-indigo-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
        <Icon name="Aa" size="{16}"/> {settings.elderMode ? '放大' : '標準'}
     </button>
-    <button onClick={() => toggleSetting('isDarkMode')} className="p-2 rounded-full bg-slate-100 text-slate-500"><Icon name="{settings.isDarkMode" ? "☀️" : "🌙"} size="{18}"/></button>
+    <button onClick={() => toggleSetting('isDarkMode')} className="p-2 rounded-full bg-slate-100 text-slate-500"><Icon "☀️" "🌙"} : ? name="{settings.isDarkMode" size="{18}"/></button>
   </div>
 );
 
@@ -247,15 +247,10 @@ function MainApp() {
     return { ...defaultData, ...(patientsState[id] || {}) };
   };
 
-  // V62.9 核心修復：樂觀更新 (Optimistic UI) 確保畫面瞬間切換
   const updatePatientState = (id, data) => {
     const current = getPatientData(id);
     const updatedData = { ...current, ...data };
-    
-    // 1. 樂觀更新：立刻改變本地畫面
     setPatientsState(prev => ({ ...prev, [id]: updatedData }));
-    
-    // 2. 背景寫入 Firebase
     set(ref(db, `patientsState/${id}`), updatedData).catch(err => {
         alert("資料庫寫入被拒，請至 Firebase 開放 Rules 讀寫權限！");
         console.error(err);
@@ -265,7 +260,6 @@ function MainApp() {
   const createAlert = (data) => {
     const id = Math.random().toString(36).substr(2, 9);
     const newAlert = { id, ...data, timestamp: Date.now(), status: 'pending' };
-    
     setAlerts(prev => [newAlert, ...prev].sort((a,b) => b.timestamp - a.timestamp));
     set(ref(db, `alerts/${id}`), newAlert).catch(err => alert("呼叫失敗，請檢查 Firebase 權限"));
   };
@@ -323,11 +317,11 @@ function MainApp() {
         <div className="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in">
           <div className="w-20 h-20 bg-emerald-100 rounded-[1.5rem] flex items-center justify-center text-emerald-600 shadow-inner mb-6 border border-emerald-200"><Icon name="📈" size="{48}"/></div>
           <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10"> Firebase 雲端穩定版 V62.9</div>
+          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10"> Firebase 雲端穩定版 V62.8</div>
 
           <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] shadow-xl flex flex-col items-center hover:border-sky-400 transition-all">
-               <Icon name="📱" size="{64}" className="text-sky-500 mb-4"/>
+               <Icon className="text-sky-500 mb-4" name="📱" size="{64}"/>
                <h2 className="text-2xl font-black dark:text-white mb-2">一般使用者端</h2>
                <p className="text-slate-400 text-sm text-center mb-8">病患專屬導航與家屬授權探視。</p>
                <div className="w-full space-y-3">
@@ -336,7 +330,7 @@ function MainApp() {
                </div>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] shadow-xl flex flex-col items-center hover:border-indigo-400 transition-all">
-               <Icon name="🖥️" size="{64}" className="text-indigo-500 mb-4"/>
+               <Icon className="text-indigo-500 mb-4" name="🖥️" size="{64}"/>
                <h2 className="text-2xl font-black dark:text-white mb-2">醫療護理端</h2>
                <p className="text-slate-400 text-sm text-center mb-8">全區病患動態監控、發送廣播與接收任務。</p>
                <div className="w-full space-y-3">
@@ -349,7 +343,7 @@ function MainApp() {
       )}
 
       {role === 'staff_login' && (
-        <StaffLogin target="{staffTarget}" onLogin="{(name)"> { setSelectedNurse(name); setRole(staffTarget); }} onBack={() => setRole(null)} />
+        <StaffLogin onLogin="{(name)" target="{staffTarget}"> { setSelectedNurse(name); setRole(staffTarget); }} onBack={() => setRole(null)} />
       )}
 
       {(role === 'patient_verify' || role === 'family_select') && (
@@ -372,11 +366,11 @@ function MainApp() {
       )}
 
       {role === 'patient_login' && selectedPatient && (
-        <PatientLogin patient="{selectedPatient}" settings="{settings}" onSuccess="{()"> setRole('patient_app')} onBack={() => setRole('patient_verify')} />
+        <PatientLogin onSuccess="{()" patient="{selectedPatient}" settings="{settings}"> setRole('patient_app')} onBack={() => setRole('patient_verify')} />
       )}
 
       {(role === 'patient_app' || role === 'family_app') && selectedPatient && (
-        <PatientApp patient="{selectedPatient}" state="{getPatientData(selectedPatient.id)}" settings="{settings}" toggleSetting="{toggleSetting}" onLogout="{()"> setRole(null)} 
+        <PatientApp onLogout="{()" patient="{selectedPatient}" settings="{settings}" state="{getPatientData(selectedPatient.id)}" toggleSetting="{toggleSetting}"> setRole(null)} 
           createAlert={createAlert} commands={commands} ackCommand={ackCommand} systemConfig={systemConfig} 
           isFamily={role === 'family_app'} 
           isProxy={getPatientData(selectedPatient.id).proxyEnabled} 
@@ -384,7 +378,7 @@ function MainApp() {
         />
       )}
       {(role === 'station' || role === 'nurse_mobile') && (
-        <NurseApp role="{role}" nurseName="{selectedNurse}" patientsState="{patientsState}" updatePatientState="{updatePatientState}" getPatientData="{getPatientData}" alerts="{alerts}" resolveAlert="{resolveAlert}" createAlert="{createAlert}" commands="{commands}" createCommand="{createCommand}" ackCommand="{ackCommand}" settings="{settings}" toggleSetting="{toggleSetting}" onLogout="{()"> setRole(null)} setSystemConfig={updateSystemConfig} clearAllAlerts={clearAllAlerts} systemConfig={systemConfig} />
+        <NurseApp ackCommand="{ackCommand}" alerts="{alerts}" commands="{commands}" createAlert="{createAlert}" createCommand="{createCommand}" getPatientData="{getPatientData}" nurseName="{selectedNurse}" onLogout="{()" patientsState="{patientsState}" resolveAlert="{resolveAlert}" role="{role}" settings="{settings}" toggleSetting="{toggleSetting}" updatePatientState="{updatePatientState}"> setRole(null)} setSystemConfig={updateSystemConfig} clearAllAlerts={clearAllAlerts} systemConfig={systemConfig} />
       )}
     </div>
   );
@@ -409,7 +403,7 @@ function StaffLogin({ target, onLogin, onBack }) {
     <div className="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in bg-slate-50/50 dark:bg-slate-900/50">
        <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col items-center">
           <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-inner ${target === 'station' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>
-             <Icon name="{target" 'station' ? "💻" : "📲"} size="{40}"/>
+             <Icon "💻" "📲"} 'station' : ? name="{target" size="{40}"/>
           </div>
           <h2 className="text-2xl font-black mb-6 dark:text-slate-200">{target === 'station' ? '護理站主控台登入' : '公務機系統登入'}</h2>
           <form onSubmit={handleLogin} className="w-full space-y-4">
@@ -547,7 +541,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-900 animate-fade-in">
         <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-xl text-center border border-slate-200">
-           <Icon name="🔒" size="{48}" className="text-slate-300 mb-6"/>
+           <Icon className="text-slate-300 mb-6" name="🔒" size="{48}"/>
            <h2 className="text-2xl font-black mb-4 dark:text-slate-200">就診紀錄已結案</h2>
            <p className="text-slate-500 font-bold mb-8">病患已完成離院手續，為保護隱私，專屬連結已自動註銷失效。</p>
            <button onClick={onLogout} className="bg-sky-500 text-white font-bold py-3 px-8 rounded-xl">返回系統首頁</button>
@@ -573,7 +567,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
       )}
       {showUrgentCall && (
         <div className="absolute inset-0 z-[100] bg-rose-600 flex flex-col items-center justify-center p-6 animate-pulse">
-           <Icon name="⚠️" size="{120}" className="text-white mb-6"/>
+           <Icon className="text-white mb-6" name="⚠️" size="{120}"/>
            <h2 className="text-5xl font-black text-white mb-4">輪到您了！</h2>
            <p className="text-2xl text-white text-center mb-10 font-bold">請立刻前往看診區看診</p>
            <button onClick={() => setShowUrgentCall(false)} className="bg-white text-rose-600 font-black text-3xl py-5 px-12 rounded-3xl shadow-2xl active:scale-95 transition-transform">我知道了</button>
@@ -602,13 +596,13 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
       )}
 
       <div className="bg-sky-600 text-white h-10 flex items-center px-4 overflow-hidden relative z-[60] shadow-sm shrink-0">
-        <Icon name="ℹ️" size="{16}" className="mr-2"/><div className="animate-marquee whitespace-nowrap text-sm font-bold tracking-widest uppercase">{systemConfig.marqueeText}</div>
+        <Icon className="mr-2" name="ℹ️" size="{16}"/><div className="animate-marquee whitespace-nowrap text-sm font-bold tracking-widest uppercase">{systemConfig.marqueeText}</div>
       </div>
 
       <header className="p-4 border-b flex justify-between items-center shrink-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-50">
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
-            <Icon name="📈" size="{20}" className="text-rose-500"/> <h1 className="text-lg font-black text-sky-600">某某醫學中心</h1>
+            <Icon className="text-rose-500" name="📈" size="{20}"/> <h1 className="text-lg font-black text-sky-600">某某醫學中心</h1>
             {isFamily && isProxy && <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-0.5 rounded-md ml-2 border border-purple-200">代理操作中</span>}
           </div>
           <div className="flex items-center gap-3 mt-1">
@@ -636,13 +630,13 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
             {state.consents?.ct === 'pending' && (
                <div className="bg-purple-50 border-2 border-purple-300 p-6 rounded-[2.5rem] shadow-md mb-2 animate-bounce">
                   <div className="flex items-center gap-3 text-purple-700 font-black mb-4"><Icon name="📝" size="{28}"/> CT 電腦斷層檢查同意書待簽署</div>
-                  <SwipeToConfirm text="滑動以簽署同意書" onConfirm="{()"> setActiveConsent('ct')} bgClass="bg-purple-200" textClass="text-purple-700" icon={<Icon name="▶️" size="{16}"/>} />
+                  <SwipeToConfirm onConfirm="{()" text="滑動以簽署同意書"> setActiveConsent('ct')} bgClass="bg-purple-200" textClass="text-purple-700" icon={<Icon name="▶️" size="{16}"/>} />
                </div>
             )}
 
             <div className="bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-slate-700">
                <div className="flex items-center gap-2 mb-6">
-                  <Icon name="📈" size="{18}" className="text-sky-500"/>
+                  <Icon className="text-sky-500" name="📈" size="{18}"/>
                   <h3 className="font-black text-lg text-sky-700 dark:text-sky-400">就診流程</h3>
                </div>
                <div className="flex justify-between items-center relative px-2">
@@ -681,7 +675,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
             </div>
 
             <div className="bg-white dark:bg-slate-800 p-6 rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-700">
-               <div className="flex items-center gap-2 mb-6"><Icon name="📄" size="{18}" className="text-slate-500"/><h3 className="font-black text-lg text-slate-700 dark:text-slate-300">檢驗與報告進度</h3></div>
+               <div className="flex items-center gap-2 mb-6"><Icon className="text-slate-500" name="📄" size="{18}"/><h3 className="font-black text-lg text-slate-700 dark:text-slate-300">檢驗與報告進度</h3></div>
                <div className="space-y-4">
                  {LAB_TYPES.map(lab => {
                    const s = state.labStatus[lab.id];
@@ -691,7 +685,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
                      <div key={lab.id} className="animate-fade-in bg-slate-50 dark:bg-slate-700 p-4 rounded-2xl border border-slate-100 dark:border-slate-600">
                         <div className="flex items-center justify-between mb-3">
                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Icon name="{lab.icon" || '📄'} size="{20}" className="{lab.colorCls.split('" ')[0]}/></div>
+                              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Icon ')[0]} '📄'} className="{lab.colorCls.split('" name="{lab.icon" size="{20}" ||/></div>
                               <div><div className="font-black text-base dark:text-white">{lab.label}</div><div className="text-[10px] font-bold text-slate-400 mt-0.5">{isDone ? '完成' : '處理中'}</div></div>
                            </div>
                            <div className={`font-black text-sm ${isDone ? 'text-emerald-500' : 'text-sky-500'}`}>{s.text}</div>
@@ -824,7 +818,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
              )}
              
              <div className="space-y-3 mt-8 border-t pt-6">
-                <div className="flex items-center gap-2 px-1 mb-2"><Icon name="❓" size="{20}" className="text-sky-500"/><h3 className="text-sm font-black text-sky-700 dark:text-sky-400">常見問題 Q&A</h3></div>
+                <div className="flex items-center gap-2 px-1 mb-2"><Icon className="text-sky-500" name="❓" size="{20}"/><h3 className="text-sm font-black text-sky-700 dark:text-sky-400">常見問題 Q&A</h3></div>
                 {FAQS.map((f, i) => (
                   <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden shadow-sm transition-all">
                     <button onClick={()=>setOpenFaq(openFaq===i?null:i)} className="w-full p-4 flex justify-between items-center text-left gap-3 font-bold text-slate-800 dark:text-slate-200 text-[15px]">
@@ -853,7 +847,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
               <h3 className="text-2xl font-black dark:text-white mb-2">家屬探視連結</h3>
               <p className="text-slate-400 text-sm mb-8 px-4 font-bold leading-relaxed">請家屬掃描條碼或複製網址，進入前需驗證身分證後四碼。</p>
               <div className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-100 mb-8 shadow-xl">
-                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=er-omo.link/${patient.token}`} alt="QR" className="w-40 h-40"/>
+                 <img src={`[https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=er-omo.link/$](https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=er-omo.link/$){patient.token}`} alt="QR" className="w-40 h-40"/>
               </div>
               
               {copySuccess ? (
@@ -1000,7 +994,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                     ))}
                  </div>
                  <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex items-center px-3 overflow-hidden">
-                    <Icon name="🔍" size="{14}" className="text-slate-400"/>
+                    <Icon className="text-slate-400" name="🔍" size="{14}"/>
                     <input type="text" placeholder="搜尋姓名或病歷號或床號..." value={searchKey} onChange={e=>setSearchKey(e.target.value)} className="outline-none text-sm font-bold p-2 w-48 bg-transparent" />
                  </div>
                  <div className="flex gap-1 bg-white p-1 rounded-lg shadow-sm border border-slate-200">
@@ -1088,7 +1082,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                                       </button>
                                   ) : (
                                       <>
-                                          <SwipeToConfirm text="滑動以離院結案" onConfirm="{()=">handleDischarge(p.id)} bgClass="bg-rose-50 border border-rose-100" textClass="text-rose-600" />
+                                          <SwipeToConfirm onConfirm="{()=" text="滑動以離院結案">handleDischarge(p.id)} bgClass="bg-rose-50 border border-rose-100" textClass="text-rose-600" />
                                           <button onClick={() => startDischargeTimer(p.id)} className="w-full py-3 bg-slate-800 text-white rounded-xl font-black active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md">
                                               <Icon name="💳" size="{16}"/> 批價模擬出院 (30分鐘倒數)
                                           </button>
@@ -1113,7 +1107,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
         <aside className={`${isStation ? 'w-[320px] shrink-0 border-l border-slate-200' : 'w-full'} bg-slate-50 p-6 flex flex-col h-full`}>
            <h3 className="text-[15px] font-black text-rose-500 mb-6 flex items-center gap-2"><Icon name="🔔" size="{20}"/> {isStation ? '緊急呼叫' : '任務佇列'} ({alerts.length})</h3>
            <div className="flex-1 overflow-y-auto space-y-4 pr-2 pb-10">
-             {alerts.map(a => <AlertTaskCard key="{a.id}" alert="{a}" isStation="{isStation}" resolveAlert="{resolveAlert}" showToast="{showToast}"/> )}
+             {alerts.map(a => <AlertTaskCard alert="{a}" isStation="{isStation}" key="{a.id}" resolveAlert="{resolveAlert}" showToast="{showToast}"/> )}
              {alerts.length === 0 && <div className="text-center py-20 text-slate-400 font-bold text-sm">目前無任務</div>}
            </div>
         </aside>
@@ -1235,7 +1229,7 @@ function AlertTaskCard({ alert, isStation, resolveAlert, showToast }) {
                    {STAFF_LIST.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                 </select>
              </div>
-             <SwipeToConfirm text="滑動以釋放任務" onConfirm="{()=">setStatus('pending')} bgClass="bg-slate-200 border border-slate-300" textClass="text-slate-600" />
+             <SwipeToConfirm onConfirm="{()=" text="滑動以釋放任務">setStatus('pending')} bgClass="bg-slate-200 border border-slate-300" textClass="text-slate-600" />
           </div>
        )}
 
@@ -1266,6 +1260,3 @@ class ErrorBoundary extends React.Component {
 }
 
 export default function App() { return <ErrorBoundary><MainApp/></ErrorBoundary>; }
-```eof
-
-```</SwipeToConfirm></SwipeToConfirm></SwipeToConfirm></NurseApp></PatientApp></PatientLogin></StaffLogin>
