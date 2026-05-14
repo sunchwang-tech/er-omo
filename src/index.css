@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* 強制關閉 Tailwind 自動跟隨系統的深色模式，改為由 class 手動控制 */
+@theme {
+  --default-color-scheme: light;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
