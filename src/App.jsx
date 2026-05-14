@@ -124,19 +124,19 @@ const SwipeToConfirm = ({ onConfirm, text, bgClass, textClass, icon }) => {
          onTouchMove={e=>handleMove(e.touches[0].clientX)} onTouchEnd={handleEnd} onMouseMove={e=>e.buttons===1&&handleMove(e.clientX)} onMouseUp={handleEnd} onMouseLeave={handleEnd}>
       <span className={`text-xs sm:text-sm font-bold z-0 transition-opacity ${unlocked ? 'text-white' : textClass}`}>{unlocked ? '✅ 已確認' : text}</span>
       <div className={`absolute left-1 top-1 w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-lg flex items-center justify-center shadow-md z-10 transition-transform ${unlocked ? 'opacity-0' : ''}`} 
-           style={{ transform: `translateX(${dragX}px)`, transition: dragX===0?'transform 0.3s ease':'none' }}>{icon || <Icon name="▶️" size="{16}"/>}</div>
+           style={{ transform: `translateX(${dragX}px)`, transition: dragX===0?'transform 0.3s ease':'none' }}>{icon || <Icon name="▶️" size={16}/>}</div>
     </div>
   );
 };
 
 const HeaderSettings = ({ settings, toggleSetting }) => (
   <div className="flex items-center gap-1.5 sm:gap-2">
-    <button onClick={() => toggleSetting('voice')} className={`p-2 rounded-full transition-colors ${settings.voice ? 'bg-sky-100 text-sky-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon "🔇"} "🔊" : ? name="{settings.voice" size="{18}"/></button>
-    <button onClick={() => toggleSetting('vibe')} className={`p-2 rounded-full transition-colors ${settings.vibe ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name="📳" size="{18}"/></button>
+    <button onClick={() => toggleSetting('voice')} className={`p-2 rounded-full transition-colors ${settings.voice ? 'bg-sky-100 text-sky-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name={settings.voice ? "🔊" : "🔇"} size={18}/></button>
+    <button onClick={() => toggleSetting('vibe')} className={`p-2 rounded-full transition-colors ${settings.vibe ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name="📳" size={18}/></button>
     <button onClick={() => toggleSetting('elderMode')} className={`px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 font-bold text-sm ${settings.elderMode ? 'bg-indigo-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-       <Icon name="Aa" size="{16}"/> {settings.elderMode ? '放大' : '標準'}
+       <Icon name="Aa" size={16}/> {settings.elderMode ? '放大' : '標準'}
     </button>
-    <button onClick={() => toggleSetting('isDarkMode')} className="p-2 rounded-full bg-slate-100 text-slate-500"><Icon "☀️" "🌙"} : ? name="{settings.isDarkMode" size="{18}"/></button>
+    <button onClick={() => toggleSetting('isDarkMode')} className="p-2 rounded-full bg-slate-100 text-slate-500"><Icon name={settings.isDarkMode ? "☀️" : "🌙"} size={18}/></button>
   </div>
 );
 
@@ -152,7 +152,6 @@ function MainApp() {
   const [commands, setCommands] = useState([]);
   const [systemConfig, setSystemConfig] = useState({ marqueeText: '【急診衛教宣導】進入醫療中心請全程配戴口罩。' });
 
-  // === Firebase 監聽機制 ===
   useEffect(() => {
     const psRef = ref(db, 'patientsState');
     const psUnsub = onValue(psRef, (snapshot) => {
@@ -189,7 +188,6 @@ function MainApp() {
     };
   }, []);
 
-  // 倒數計時器
   useEffect(() => {
     const interval = setInterval(() => {
       const updates = {};
@@ -252,7 +250,7 @@ function MainApp() {
     const updatedData = { ...current, ...data };
     setPatientsState(prev => ({ ...prev, [id]: updatedData }));
     set(ref(db, `patientsState/${id}`), updatedData).catch(err => {
-        alert("資料庫寫入被拒，請至 Firebase 開放 Rules 讀寫權限！");
+        alert("資料庫寫入被拒，請檢查 Firebase 連線");
         console.error(err);
     });
   };
@@ -261,7 +259,7 @@ function MainApp() {
     const id = Math.random().toString(36).substr(2, 9);
     const newAlert = { id, ...data, timestamp: Date.now(), status: 'pending' };
     setAlerts(prev => [newAlert, ...prev].sort((a,b) => b.timestamp - a.timestamp));
-    set(ref(db, `alerts/${id}`), newAlert).catch(err => alert("呼叫失敗，請檢查 Firebase 權限"));
+    set(ref(db, `alerts/${id}`), newAlert).catch(err => alert("呼叫失敗，請檢查網路連線"));
   };
 
   const resolveAlert = (id) => {
@@ -315,27 +313,27 @@ function MainApp() {
 
       {!role && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in">
-          <div className="w-20 h-20 bg-emerald-100 rounded-[1.5rem] flex items-center justify-center text-emerald-600 shadow-inner mb-6 border border-emerald-200"><Icon name="📈" size="{48}"/></div>
+          <div className="w-20 h-20 bg-emerald-100 rounded-[1.5rem] flex items-center justify-center text-emerald-600 shadow-inner mb-6 border border-emerald-200"><Icon name="📈" size={48} /></div>
           <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10"> Firebase 雲端穩定版 V62.8</div>
+          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10"> Firebase 雲端穩定版 V62.9</div>
 
           <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] shadow-xl flex flex-col items-center hover:border-sky-400 transition-all">
-               <Icon className="text-sky-500 mb-4" name="📱" size="{64}"/>
+               <Icon name="📱" size={64} className="text-sky-500 mb-4" />
                <h2 className="text-2xl font-black dark:text-white mb-2">一般使用者端</h2>
                <p className="text-slate-400 text-sm text-center mb-8">病患專屬導航與家屬授權探視。</p>
                <div className="w-full space-y-3">
-                  <button onClick={() => setRole('patient_verify')} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="🏥" size="{24}"/> 病患本人登入</button>
-                  <button onClick={() => setRole('family_select')} className="w-full bg-amber-50 hover:bg-amber-100 text-amber-600 py-4 rounded-2xl font-black text-lg border border-amber-200 transition-all flex items-center justify-center gap-2"><Icon name="👥" size="{24}"/> 家屬探視登入</button>
+                  <button onClick={() => setRole('patient_verify')} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="🏥" size={24}/> 病患本人登入</button>
+                  <button onClick={() => setRole('family_select')} className="w-full bg-amber-50 hover:bg-amber-100 text-amber-600 py-4 rounded-2xl font-black text-lg border border-amber-200 transition-all flex items-center justify-center gap-2"><Icon name="👥" size={24}/> 家屬探視登入</button>
                </div>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] shadow-xl flex flex-col items-center hover:border-indigo-400 transition-all">
-               <Icon className="text-indigo-500 mb-4" name="🖥️" size="{64}"/>
+               <Icon name="🖥️" size={64} className="text-indigo-500 mb-4" />
                <h2 className="text-2xl font-black dark:text-white mb-2">醫療護理端</h2>
                <p className="text-slate-400 text-sm text-center mb-8">全區病患動態監控、發送廣播與接收任務。</p>
                <div className="w-full space-y-3">
-                  <button onClick={() => { setStaffTarget('station'); setRole('staff_login'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="💻" size="{24}"/> 護理站主控台</button>
-                  <button onClick={() => { setStaffTarget('nurse_mobile'); setRole('staff_login'); }} className="w-full bg-slate-50 hover:bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-lg border border-slate-200 transition-all flex items-center justify-center gap-2"><Icon name="📲" size="{24}"/> 護理師公務機</button>
+                  <button onClick={() => { setStaffTarget('station'); setRole('staff_login'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="💻" size={24}/> 護理站主控台</button>
+                  <button onClick={() => { setStaffTarget('nurse_mobile'); setRole('staff_login'); }} className="w-full bg-slate-50 hover:bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-lg border border-slate-200 transition-all flex items-center justify-center gap-2"><Icon name="📲" size={24}/> 護理師公務機</button>
                </div>
             </div>
           </div>
@@ -343,14 +341,14 @@ function MainApp() {
       )}
 
       {role === 'staff_login' && (
-        <StaffLogin onLogin="{(name)" target="{staffTarget}"> { setSelectedNurse(name); setRole(staffTarget); }} onBack={() => setRole(null)} />
+        <StaffLogin target={staffTarget} onLogin={(name) => { setSelectedNurse(name); setRole(staffTarget); }} onBack={() => setRole(null)} />
       )}
 
       {(role === 'patient_verify' || role === 'family_select') && (
         <div className="flex-1 p-6 overflow-y-auto animate-fade-in">
           <header className="flex justify-between items-center mb-8 max-w-6xl mx-auto">
-             <button onClick={() => setRole(null)} className="flex items-center gap-2 text-slate-500 font-bold bg-white dark:bg-slate-800 px-4 py-2 rounded-full shadow-sm"><Icon name="◀️" size="{16}"/> 返回</button>
-             <HeaderSettings settings="{settings}" toggleSetting="{toggleSetting}"/>
+             <button onClick={() => setRole(null)} className="flex items-center gap-2 text-slate-500 font-bold bg-white dark:bg-slate-800 px-4 py-2 rounded-full shadow-sm"><Icon name="◀️" size={16}/> 返回</button>
+             <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
           </header>
           <h2 className="text-3xl font-black mb-8 dark:text-white text-center">請選擇模擬對象 (70 位)</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4 max-w-6xl mx-auto">
@@ -366,11 +364,14 @@ function MainApp() {
       )}
 
       {role === 'patient_login' && selectedPatient && (
-        <PatientLogin onSuccess="{()" patient="{selectedPatient}" settings="{settings}"> setRole('patient_app')} onBack={() => setRole('patient_verify')} />
+        <PatientLogin patient={selectedPatient} settings={settings} onSuccess={() => setRole('patient_app')} onBack={() => setRole('patient_verify')} />
       )}
 
       {(role === 'patient_app' || role === 'family_app') && selectedPatient && (
-        <PatientApp onLogout="{()" patient="{selectedPatient}" settings="{settings}" state="{getPatientData(selectedPatient.id)}" toggleSetting="{toggleSetting}"> setRole(null)} 
+        <PatientApp 
+          patient={selectedPatient} 
+          state={getPatientData(selectedPatient.id)} 
+          settings={settings} toggleSetting={toggleSetting} onLogout={() => setRole(null)} 
           createAlert={createAlert} commands={commands} ackCommand={ackCommand} systemConfig={systemConfig} 
           isFamily={role === 'family_app'} 
           isProxy={getPatientData(selectedPatient.id).proxyEnabled} 
@@ -378,7 +379,7 @@ function MainApp() {
         />
       )}
       {(role === 'station' || role === 'nurse_mobile') && (
-        <NurseApp ackCommand="{ackCommand}" alerts="{alerts}" commands="{commands}" createAlert="{createAlert}" createCommand="{createCommand}" getPatientData="{getPatientData}" nurseName="{selectedNurse}" onLogout="{()" patientsState="{patientsState}" resolveAlert="{resolveAlert}" role="{role}" settings="{settings}" toggleSetting="{toggleSetting}" updatePatientState="{updatePatientState}"> setRole(null)} setSystemConfig={updateSystemConfig} clearAllAlerts={clearAllAlerts} systemConfig={systemConfig} />
+        <NurseApp role={role} nurseName={selectedNurse} patientsState={patientsState} updatePatientState={updatePatientState} getPatientData={getPatientData} alerts={alerts} resolveAlert={resolveAlert} createAlert={createAlert} commands={commands} createCommand={createCommand} ackCommand={ackCommand} settings={settings} toggleSetting={toggleSetting} onLogout={() => setRole(null)} setSystemConfig={updateSystemConfig} clearAllAlerts={clearAllAlerts} systemConfig={systemConfig} />
       )}
     </div>
   );
@@ -403,7 +404,7 @@ function StaffLogin({ target, onLogin, onBack }) {
     <div className="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in bg-slate-50/50 dark:bg-slate-900/50">
        <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col items-center">
           <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-inner ${target === 'station' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>
-             <Icon "💻" "📲"} 'station' : ? name="{target" size="{40}"/>
+             <Icon name={target === 'station' ? "💻" : "📲"} size={40} />
           </div>
           <h2 className="text-2xl font-black mb-6 dark:text-slate-200">{target === 'station' ? '護理站主控台登入' : '公務機系統登入'}</h2>
           <form onSubmit={handleLogin} className="w-full space-y-4">
@@ -431,7 +432,7 @@ function PatientLogin({ patient, onSuccess, onBack, settings }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in bg-slate-50/50 dark:bg-slate-900/50">
        <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col items-center text-center">
-          <div className="w-16 h-16 bg-sky-100 text-sky-600 rounded-2xl flex items-center justify-center mb-6"><Icon name="🔒" size="{32}"/></div>
+          <div className="w-16 h-16 bg-sky-100 text-sky-600 rounded-2xl flex items-center justify-center mb-6"><Icon name="🔒" size={32} /></div>
           <h2 className="text-2xl font-black mb-2 dark:text-slate-200">請輸入身分驗證</h2>
           <p className="text-slate-400 text-sm mb-10">請輸入病患 <span className="font-bold text-slate-800 dark:text-slate-200">{patient.name}</span> 的身分證字號末四碼 (預設: 0000)。</p>
           <div className="w-full flex gap-3 mb-8">
@@ -541,7 +542,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-900 animate-fade-in">
         <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-xl text-center border border-slate-200">
-           <Icon className="text-slate-300 mb-6" name="🔒" size="{48}"/>
+           <Icon name="🔒" size={48} className="text-slate-300 mb-6" />
            <h2 className="text-2xl font-black mb-4 dark:text-slate-200">就診紀錄已結案</h2>
            <p className="text-slate-500 font-bold mb-8">病患已完成離院手續，為保護隱私，專屬連結已自動註銷失效。</p>
            <button onClick={onLogout} className="bg-sky-500 text-white font-bold py-3 px-8 rounded-xl">返回系統首頁</button>
@@ -559,15 +560,15 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
       {recallNotify && (
         <div className="absolute top-16 left-4 right-4 z-[90] animate-fade-in">
            <div className={`${recallNotify.color} backdrop-blur-xl border border-white/30 rounded-2xl p-5 shadow-2xl flex items-start gap-4`}>
-              <div className="text-4xl animate-bounce"><Icon name="{recallNotify.icon}" size="{36}"/></div>
+              <div className="text-4xl animate-bounce"><Icon name={recallNotify.icon} size={36} /></div>
               <div className="text-white flex-1"><h3 className="font-black text-xl mb-1">{recallNotify.title}</h3><p className="font-bold text-sm opacity-95">{recallNotify.desc}</p></div>
-              <button onClick={() => setRecallNotify(null)} className="text-white/70 hover:text-white"><Icon name="❌" size="{20}"/></button>
+              <button onClick={() => setRecallNotify(null)} className="text-white/70 hover:text-white"><Icon name="❌" size={20} /></button>
            </div>
         </div>
       )}
       {showUrgentCall && (
         <div className="absolute inset-0 z-[100] bg-rose-600 flex flex-col items-center justify-center p-6 animate-pulse">
-           <Icon className="text-white mb-6" name="⚠️" size="{120}"/>
+           <Icon name="⚠️" size={120} className="text-white mb-6" />
            <h2 className="text-5xl font-black text-white mb-4">輪到您了！</h2>
            <p className="text-2xl text-white text-center mb-10 font-bold">請立刻前往看診區看診</p>
            <button onClick={() => setShowUrgentCall(false)} className="bg-white text-rose-600 font-black text-3xl py-5 px-12 rounded-3xl shadow-2xl active:scale-95 transition-transform">我知道了</button>
@@ -577,8 +578,8 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
       {activeConsent && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[3rem] p-8 shadow-2xl flex flex-col items-center text-center relative">
-              <button onClick={()=>setActiveConsent(null)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full"><Icon name="❌" size="{16}"/></button>
-              <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-4"><Icon name="✍️" size="{32}"/></div>
+              <button onClick={()=>setActiveConsent(null)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full"><Icon name="❌" size={16} /></button>
+              <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-4"><Icon name="✍️" size={32} /></div>
               <h3 className="text-xl font-black dark:text-white mb-2">{activeConsent === 'ct' ? 'CT 檢查同意書' : '住院同意書'}</h3>
               <p className="text-slate-400 text-sm mb-6">請詳閱說明後進行數位簽署。</p>
               <div className="w-full h-32 bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl flex items-center justify-center text-slate-400 font-bold mb-6">請在此處簽名</div>
@@ -596,30 +597,30 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
       )}
 
       <div className="bg-sky-600 text-white h-10 flex items-center px-4 overflow-hidden relative z-[60] shadow-sm shrink-0">
-        <Icon className="mr-2" name="ℹ️" size="{16}"/><div className="animate-marquee whitespace-nowrap text-sm font-bold tracking-widest uppercase">{systemConfig.marqueeText}</div>
+        <Icon name="ℹ️" size={16} className="mr-2" /><div className="animate-marquee whitespace-nowrap text-sm font-bold tracking-widest uppercase">{systemConfig.marqueeText}</div>
       </div>
 
       <header className="p-4 border-b flex justify-between items-center shrink-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-50">
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
-            <Icon className="text-rose-500" name="📈" size="{20}"/> <h1 className="text-lg font-black text-sky-600">某某醫學中心</h1>
+            <Icon name="📈" size={20} className="text-rose-500" /> <h1 className="text-lg font-black text-sky-600">某某醫學中心</h1>
             {isFamily && isProxy && <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-0.5 rounded-md ml-2 border border-purple-200">代理操作中</span>}
           </div>
           <div className="flex items-center gap-3 mt-1">
             <h2 className="text-3xl font-black dark:text-white tracking-tight">{patient.name}</h2>
-            <div className="bg-emerald-50 text-emerald-600 text-[11px] font-bold px-3 py-1 rounded-full border border-emerald-100 flex items-center gap-1 shadow-sm"><Icon name="📍" size="{12}"/> 即時定位</div>
+            <div className="bg-emerald-50 text-emerald-600 text-[11px] font-bold px-3 py-1 rounded-full border border-emerald-100 flex items-center gap-1 shadow-sm"><Icon name="📍" size={12} /> 即時定位</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <HeaderSettings settings="{settings}" toggleSetting="{toggleSetting}"/>
-          <button onClick={onLogout} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl ml-1"><Icon name="🚪" size="{18}"/></button>
+          <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
+          <button onClick={onLogout} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl ml-1"><Icon name="🚪" size={18} /></button>
         </div>
       </header>
 
       {!isFamily && (
         <div className="px-4 py-3 shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
           <button onClick={()=>setShowShareModal(true)} className="w-full bg-indigo-50/80 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border border-indigo-100 dark:border-indigo-800 shadow-sm active:scale-95 transition-transform">
-             <Icon name="🔗" size="{18}"/> 點擊產生家屬探視連結
+             <Icon name="🔗" size={18} /> 點擊產生家屬探視連結
           </button>
         </div>
       )}
@@ -629,14 +630,14 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
           <div className="p-4 space-y-5 animate-fade-in">
             {state.consents?.ct === 'pending' && (
                <div className="bg-purple-50 border-2 border-purple-300 p-6 rounded-[2.5rem] shadow-md mb-2 animate-bounce">
-                  <div className="flex items-center gap-3 text-purple-700 font-black mb-4"><Icon name="📝" size="{28}"/> CT 電腦斷層檢查同意書待簽署</div>
-                  <SwipeToConfirm onConfirm="{()" text="滑動以簽署同意書"> setActiveConsent('ct')} bgClass="bg-purple-200" textClass="text-purple-700" icon={<Icon name="▶️" size="{16}"/>} />
+                  <div className="flex items-center gap-3 text-purple-700 font-black mb-4"><Icon name="📝" size={28} /> CT 電腦斷層檢查同意書待簽署</div>
+                  <SwipeToConfirm text="滑動以簽署同意書" onConfirm={() => setActiveConsent('ct')} bgClass="bg-purple-200" textClass="text-purple-700" icon={<Icon name="▶️" size={16} />} />
                </div>
             )}
 
             <div className="bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-slate-700">
                <div className="flex items-center gap-2 mb-6">
-                  <Icon className="text-sky-500" name="📈" size="{18}"/>
+                  <Icon name="📈" size={18} className="text-sky-500" />
                   <h3 className="font-black text-lg text-sky-700 dark:text-sky-400">就診流程</h3>
                </div>
                <div className="flex justify-between items-center relative px-2">
@@ -648,7 +649,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
                     return (
                       <div key={i} className="flex flex-col items-center gap-2 z-10">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${done ? 'bg-sky-500 border-sky-500 text-white' : active ? 'bg-white border-sky-500 text-sky-500 shadow-md scale-110' : 'bg-white border-slate-200 text-slate-300'}`}>
-                           {done ? <Icon name="✅" size="{14}"/> : i + 1}
+                           {done ? <Icon name="✅" size={14} /> : i + 1}
                         </div>
                         <span className={`text-[10px] font-bold ${active ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>{s}</span>
                       </div>
@@ -658,7 +659,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
             </div>
 
             <div className="bg-gradient-to-br from-sky-50 to-white dark:from-slate-800 dark:to-slate-900 p-8 rounded-[3rem] border-2 border-sky-100 dark:border-sky-900 shadow-xl relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-8 opacity-10"><Icon name="📈" size="{120}"/></div>
+               <div className="absolute top-0 right-0 p-8 opacity-10"><Icon name="📈" size={120} /></div>
                <div className="flex justify-between items-end mb-6">
                   <div className="flex flex-col">
                      <span className="text-7xl font-black text-amber-500 dark:text-amber-400 leading-none drop-shadow-sm">{state.waitingCount}</span>
@@ -675,7 +676,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
             </div>
 
             <div className="bg-white dark:bg-slate-800 p-6 rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-700">
-               <div className="flex items-center gap-2 mb-6"><Icon className="text-slate-500" name="📄" size="{18}"/><h3 className="font-black text-lg text-slate-700 dark:text-slate-300">檢驗與報告進度</h3></div>
+               <div className="flex items-center gap-2 mb-6"><Icon name="📄" size={18} className="text-slate-500" /><h3 className="font-black text-lg text-slate-700 dark:text-slate-300">檢驗與報告進度</h3></div>
                <div className="space-y-4">
                  {LAB_TYPES.map(lab => {
                    const s = state.labStatus[lab.id];
@@ -685,7 +686,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
                      <div key={lab.id} className="animate-fade-in bg-slate-50 dark:bg-slate-700 p-4 rounded-2xl border border-slate-100 dark:border-slate-600">
                         <div className="flex items-center justify-between mb-3">
                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Icon ')[0]} '📄'} className="{lab.colorCls.split('" name="{lab.icon" size="{20}" ||/></div>
+                              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Icon name={lab.icon || '📄'} size={20} className={lab.colorCls.split(' ')[0]} /></div>
                               <div><div className="font-black text-base dark:text-white">{lab.label}</div><div className="text-[10px] font-bold text-slate-400 mt-0.5">{isDone ? '完成' : '處理中'}</div></div>
                            </div>
                            <div className={`font-black text-sm ${isDone ? 'text-emerald-500' : 'text-sky-500'}`}>{s.text}</div>
@@ -704,9 +705,9 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
           <div className="flex flex-col h-full animate-fade-in relative pt-4">
             <div className="flex-1 bg-slate-200 dark:bg-slate-800 mx-4 rounded-3xl relative overflow-hidden shadow-inner border border-white/50 min-h-[300px]">
               <div className="absolute top-4 right-4 z-[70] flex flex-col gap-2">
-                <button onClick={() => setZoom(z => Math.min(z + 0.2, 2.5))} className="bg-white p-2.5 rounded-xl shadow-lg active:scale-95"><Icon name="➕" size="{20}"/></button>
-                <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))} className="bg-white p-2.5 rounded-xl shadow-lg active:scale-95"><Icon name="➖" size="{20}"/></button>
-                <button onClick={() => {setZoom(0.7); setActiveDest(null); setNavGuideText('');}} className="bg-white p-2.5 rounded-xl shadow-lg active:scale-95"><Icon name="🎯" size="{20}"/></button>
+                <button onClick={() => setZoom(z => Math.min(z + 0.2, 2.5))} className="bg-white p-2.5 rounded-xl shadow-lg active:scale-95"><Icon name="➕" size={20} /></button>
+                <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))} className="bg-white p-2.5 rounded-xl shadow-lg active:scale-95"><Icon name="➖" size={20} /></button>
+                <button onClick={() => {setZoom(0.7); setActiveDest(null); setNavGuideText('');}} className="bg-white p-2.5 rounded-xl shadow-lg active:scale-95"><Icon name="🎯" size={20} /></button>
               </div>
 
               <div className="absolute inset-0 flex items-center justify-center cursor-move" style={{ transform: `scale(${zoom})`, transition: 'transform 0.25s ease-out' }}>
@@ -760,7 +761,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
 
             {navGuideText && (
                <div className="bg-sky-50 p-4 mx-4 mt-4 rounded-2xl flex items-start gap-3 shrink-0 shadow-sm border border-sky-100 animate-fade-in">
-                  <div className="bg-white p-2 rounded-full shadow-sm mt-0.5"><Icon name="🧭" size="{20}"/></div>
+                  <div className="bg-white p-2 rounded-full shadow-sm mt-0.5"><Icon name="🧭" size={20} /></div>
                   <p className="text-sky-800 font-bold leading-relaxed text-[15px]">{navGuideText}</p>
                </div>
             )}
@@ -770,7 +771,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
                <div className="flex gap-3 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
                   {NAV_DESTINATIONS.map(d => (
                     <button key={d.id} onClick={() => handleStartNav(d.id)} className={`px-6 py-4 rounded-3xl shrink-0 border-[3px] font-black text-base flex flex-col items-center justify-center gap-3 min-w-[110px] transition-all active:scale-95 ${activeDest === d.id ? 'bg-sky-50 text-sky-700 border-sky-400 shadow-xl scale-110' : 'bg-white text-slate-600 border-slate-200 shadow-sm hover:bg-slate-50'}`}>
-                      <Icon name="{d.icon}" size="{36}"/> <span>{d.label}</span>
+                      <Icon name={d.icon} size={36} /> <span>{d.label}</span>
                     </button>
                   ))}
                </div>
@@ -782,7 +783,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
           <div className="p-4 space-y-6 animate-fade-in pb-24">
              {isFamily && !isProxy ? (
                 <div className="flex flex-col items-center justify-center py-16 px-6 text-center bg-slate-50 dark:bg-slate-800 rounded-[3rem] border border-slate-200 dark:border-slate-700 mt-4">
-                   <div className="w-24 h-24 bg-slate-200 dark:bg-slate-700 text-slate-400 rounded-full flex items-center justify-center mb-6 shadow-inner"><Icon name="🔒" size="{48}"/></div>
+                   <div className="w-24 h-24 bg-slate-200 dark:bg-slate-700 text-slate-400 rounded-full flex items-center justify-center mb-6 shadow-inner"><Icon name="🔒" size={48} /></div>
                    <h3 className="text-2xl font-black text-slate-800 dark:text-slate-200 mb-3">權限限制</h3>
                    <p className="text-slate-500 font-bold leading-relaxed">
                       此為病患本人專屬之求助與設定功能。<br/>
@@ -810,20 +811,20 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
                    })}
                    <div className="col-span-2 relative mt-2">
                       <button disabled={!state.sosEnabled || isRequesting('sos')} onClick={()=>handleToggleRequest('sos', '🆘 緊急求救！')} className={`w-full p-8 rounded-[2.5rem] shadow-lg flex items-center justify-center gap-4 transition-all ${state.sosEnabled ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white animate-pulse active:scale-95' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-2 border-dashed border-slate-200 cursor-not-allowed grayscale'}`}>
-                         <Icon name="🆘" size="{40}"/><span className="text-2xl font-black tracking-widest uppercase">{isRequesting('sos') ? '救援中' : '緊急求助 SOS'}</span>
+                         <Icon name="🆘" size={40} /><span className="text-2xl font-black tracking-widest uppercase">{isRequesting('sos') ? '救援中' : '緊急求助 SOS'}</span>
                       </button>
-                      {!state.sosEnabled && <div className="absolute top-3 right-6 bg-slate-700 text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-md"><Icon name="🔒" size="{10}"/> 需護理站開啟</div>}
+                      {!state.sosEnabled && <div className="absolute top-3 right-6 bg-slate-700 text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-md"><Icon name="🔒" size={10} /> 需護理站開啟</div>}
                    </div>
                 </div>
              )}
              
              <div className="space-y-3 mt-8 border-t pt-6">
-                <div className="flex items-center gap-2 px-1 mb-2"><Icon className="text-sky-500" name="❓" size="{20}"/><h3 className="text-sm font-black text-sky-700 dark:text-sky-400">常見問題 Q&A</h3></div>
+                <div className="flex items-center gap-2 px-1 mb-2"><Icon name="❓" size={20} className="text-sky-500" /><h3 className="text-sm font-black text-sky-700 dark:text-sky-400">常見問題 Q&A</h3></div>
                 {FAQS.map((f, i) => (
                   <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden shadow-sm transition-all">
                     <button onClick={()=>setOpenFaq(openFaq===i?null:i)} className="w-full p-4 flex justify-between items-center text-left gap-3 font-bold text-slate-800 dark:text-slate-200 text-[15px]">
                        <span className="flex items-center gap-3"><span className="text-emerald-500 bg-emerald-50 w-6 h-6 flex items-center justify-center rounded text-xs font-black shrink-0">Q</span> <span className="leading-snug">{f.q}</span></span>
-                       <span className="text-slate-400"><Icon name="{openFaq===i?'🔼':'🔽'}" size="{14}"/></span>
+                       <span className="text-slate-400"><Icon name={openFaq===i?'🔼':'🔽'} size={14} /></span>
                     </button>
                     {openFaq===i && <div className="p-4 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-600 flex gap-3 leading-relaxed text-sm animate-fade-in"><span className="text-amber-500 bg-amber-50 w-6 h-6 flex items-center justify-center rounded text-xs font-black shrink-0 mt-0.5">A</span><p className="font-bold">{f.a}</p></div>}
                   </div>
@@ -834,20 +835,20 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
       </div>
 
       <footer className="h-20 border-t bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl flex items-center justify-around px-4 pb-4 pt-2 shrink-0 z-[100] shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
-        <button onClick={()=>setActiveTab('progress')} className={`flex flex-col items-center gap-1 w-1/3 py-2 rounded-2xl transition-all ${activeTab==='progress'?'text-sky-600 bg-sky-50':'text-slate-400'}`}><Icon name="📈" size="{24}"/><span className="text-[10px] font-black uppercase">看進度</span></button>
-        <button onClick={()=>setActiveTab('nav')} className={`flex flex-col items-center gap-1 w-1/3 py-2 rounded-2xl transition-all ${activeTab==='nav'?'text-sky-600 bg-sky-50':'text-slate-400'}`}><Icon name="📍" size="{24}"/><span className="text-[10px] font-black uppercase">找路</span></button>
-        <button onClick={()=>setActiveTab('help')} className={`flex flex-col items-center gap-1 w-1/3 py-2 rounded-2xl transition-all ${activeTab==='help'?'text-amber-600 bg-amber-50':'text-slate-400'}`}><Icon name="🤝" size="{24}"/><span className="text-[10px] font-black uppercase">要幫忙</span></button>
+        <button onClick={()=>setActiveTab('progress')} className={`flex flex-col items-center gap-1 w-1/3 py-2 rounded-2xl transition-all ${activeTab==='progress'?'text-sky-600 bg-sky-50':'text-slate-400'}`}><Icon name="📈" size={24} /><span className="text-[10px] font-black uppercase">看進度</span></button>
+        <button onClick={()=>setActiveTab('nav')} className={`flex flex-col items-center gap-1 w-1/3 py-2 rounded-2xl transition-all ${activeTab==='nav'?'text-sky-600 bg-sky-50':'text-slate-400'}`}><Icon name="📍" size={24} /><span className="text-[10px] font-black uppercase">找路</span></button>
+        <button onClick={()=>setActiveTab('help')} className={`flex flex-col items-center gap-1 w-1/3 py-2 rounded-2xl transition-all ${activeTab==='help'?'text-amber-600 bg-amber-50':'text-slate-400'}`}><Icon name="🤝" size={24} /><span className="text-[10px] font-black uppercase">要幫忙</span></button>
       </footer>
 
       {showShareModal && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl flex flex-col items-center text-center relative border border-white/20">
-              <button onClick={()=>setShowShareModal(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size="{16}"/></button>
-              <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-[2rem] flex items-center justify-center mb-6 shadow-inner"><Icon name="🔗" size="{40}"/></div>
+              <button onClick={()=>setShowShareModal(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size={16} /></button>
+              <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-[2rem] flex items-center justify-center mb-6 shadow-inner"><Icon name="🔗" size={40} /></div>
               <h3 className="text-2xl font-black dark:text-white mb-2">家屬探視連結</h3>
               <p className="text-slate-400 text-sm mb-8 px-4 font-bold leading-relaxed">請家屬掃描條碼或複製網址，進入前需驗證身分證後四碼。</p>
               <div className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-100 mb-8 shadow-xl">
-                 <img src={`[https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=er-omo.link/$](https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=er-omo.link/$){patient.token}`} alt="QR" className="w-40 h-40"/>
+                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=er-omo.link/${patient.token}`} alt="QR" className="w-40 h-40"/>
               </div>
               
               {copySuccess ? (
@@ -966,20 +967,20 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
       <header className="bg-indigo-50/80 border-b border-indigo-100 flex flex-col shrink-0 z-50">
         <div className="flex justify-between items-center px-6 py-3">
            <div className="flex items-center gap-3">
-             <Icon name="🛡️" size="{28}"/>
+             <Icon name="🛡️" size={28} />
              <div><h2 className="font-black text-xl">{isStation ? '護理站主控台' : '公務機任務中心'}</h2><p className="text-xs text-slate-500 font-bold">目前登入：{nurseName}</p></div>
            </div>
            <div className="flex items-center gap-4">
-             <HeaderSettings settings="{settings}" toggleSetting="{toggleSetting}"/>
-             <button onClick={onLogout} className="p-2 bg-slate-200 rounded-lg hover:bg-rose-500 hover:text-white transition-all"><Icon name="🚪" size="{20}"/></button>
+             <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
+             <button onClick={onLogout} className="p-2 bg-slate-200 rounded-lg hover:bg-rose-500 hover:text-white transition-all"><Icon name="🚪" size={20} /></button>
            </div>
         </div>
         {isStation && (
            <div className="flex gap-3 px-6 pb-4 flex-wrap relative z-[500]">
-              <button onClick={() => setShowBroadcastModal(true)} className="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="📢" size="{16}"/> 全區緊急廣播</button>
-              <button onClick={() => setShowMultiBedModal(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="🚨" size="{16}"/> 大量病人呼叫</button>
-              <button onClick={() => setShowMarqueeModal(true)} className="bg-sky-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="ℹ️" size="{16}"/> 設定衛教跑馬燈</button>
-              <button onClick={() => { clearAllAlerts(); showToast('已清空所有任務與警報'); }} className="bg-slate-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="🗑️" size="{16}"/> 任務全清 (測試)</button>
+              <button onClick={() => setShowBroadcastModal(true)} className="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="📢" size={16} /> 全區緊急廣播</button>
+              <button onClick={() => setShowMultiBedModal(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="🚨" size={16} /> 大量病人呼叫</button>
+              <button onClick={() => setShowMarqueeModal(true)} className="bg-sky-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="ℹ️" size={16} /> 設定衛教跑馬燈</button>
+              <button onClick={() => { clearAllAlerts(); showToast('已清空所有任務與警報'); }} className="bg-slate-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm active:scale-95"><Icon name="🗑️" size={16} /> 任務全清 (測試)</button>
            </div>
         )}
       </header>
@@ -994,13 +995,13 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                     ))}
                  </div>
                  <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex items-center px-3 overflow-hidden">
-                    <Icon className="text-slate-400" name="🔍" size="{14}"/>
+                    <Icon name="🔍" size={14} className="text-slate-400" />
                     <input type="text" placeholder="搜尋姓名或病歷號或床號..." value={searchKey} onChange={e=>setSearchKey(e.target.value)} className="outline-none text-sm font-bold p-2 w-48 bg-transparent" />
                  </div>
                  <div className="flex gap-1 bg-white p-1 rounded-lg shadow-sm border border-slate-200">
                     {['全部狀態','呼叫中','已結案'].map(s => (
                       <button key={s} onClick={()=>setStatusFilter(s)} className={`px-4 py-1.5 rounded-md text-[13px] font-black flex items-center gap-1 transition-colors ${statusFilter===s?'bg-slate-100 text-slate-800 shadow-inner':'text-slate-400 hover:text-slate-600'}`}>
-                         {s==='呼叫中'&&<Icon name="🔔" size="{14}"/>}{s==='已結案'&&<Icon name="🔒" size="{14}"/>} {s}
+                         {s==='呼叫中'&&<Icon name="🔔" size={14} />}{s==='已結案'&&<Icon name="🔒" size={14} />} {s}
                       </button>
                     ))}
                  </div>
@@ -1022,8 +1023,8 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                                   </div>
                                   <p className="text-[13px] font-bold text-sky-600 mb-1">{st.currentStatus}</p>
                                   <div className="text-[11px] font-bold text-slate-400 flex items-center gap-2">
-                                     <span><Icon name="📍" size="{12}"/> {st.location}</span>
-                                     <span><Icon name="⏳" size="{12}"/> 前方等待: {st.waitingCount}人</span>
+                                     <span><Icon name="📍" size={12} /> {st.location}</span>
+                                     <span><Icon name="⏳" size={12} /> 前方等待: {st.waitingCount}人</span>
                                   </div>
                                </div>
                             </div>
@@ -1032,18 +1033,18 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
 
                          {st.isDischarged ? (
                             <div className="mt-2 p-5 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-                               <p className="font-black text-slate-500 mb-3 text-lg"><Icon name="🔒" size="{18}"/> 病患已結案離院</p>
+                               <p className="font-black text-slate-500 mb-3 text-lg"><Icon name="🔒" size={18} /> 病患已結案離院</p>
                                <button onClick={() => undoDischarge(p.id)} className="w-full py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-black active:scale-95 transition-all flex items-center justify-center gap-2">
-                                  <Icon name="🔄" size="{16}"/> 撤銷結案 (恢復收治)
+                                  <Icon name="🔄" size={16} /> 撤銷結案 (恢復收治)
                                </button>
                             </div>
                          ) : (
                             <>
                                <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-                                  <button onClick={()=>createCommand({patientId:p.id, action:'urgent_call'})} className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold border border-rose-100 flex items-center gap-1 active:scale-95"><Icon name="🔊" size="{14}"/> 強制叫號</button>
+                                  <button onClick={()=>createCommand({patientId:p.id, action:'urgent_call'})} className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold border border-rose-100 flex items-center gap-1 active:scale-95"><Icon name="🔊" size={14} /> 強制叫號</button>
                                   <button onClick={()=>updatePatientState(p.id, {sosEnabled: !st.sosEnabled})} className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1 transition-colors ${st.sosEnabled?'bg-amber-100 text-amber-700 border-amber-300':'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`}>{st.sosEnabled?'已准SOS':'開放SOS'}</button>
                                   <button onClick={()=>updatePatientState(p.id, {proxyEnabled: !st.proxyEnabled})} className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1 transition-colors ${st.proxyEnabled?'bg-purple-100 text-purple-700 border-purple-300':'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`}>
-                                     <Icon name="👨‍⚖️" size="{14}"/> {st.proxyEnabled ? '已授權' : '授權代簽'}
+                                     <Icon name="👨‍⚖️" size={14} /> {st.proxyEnabled ? '已授權' : '授權代簽'}
                                   </button>
                                   <button onClick={()=>toggleConsent(p.id, 'admission')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${st.consents.admission==='pending'?'bg-emerald-50 text-emerald-600 border-emerald-200':st.consents.admission==='signed'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}`}>住院同意</button>
                                   {st.consents.ct && <button onClick={()=>toggleConsent(p.id, 'ct')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${st.consents.ct==='pending'?'bg-purple-50 text-purple-600 border-purple-200':st.consents.ct==='signed'?'bg-purple-500 text-white border-purple-600':'bg-slate-50 text-slate-400 border-slate-200'}`}>CT同意書</button>}
@@ -1062,7 +1063,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                                                 {lab.label} {isActive ? `[${st.labStatus[lab.id].text}]` : '[未開]'}
                                              </button>
                                              {isActive && (
-                                                <button onClick={()=>cancelLab(p.id, lab.id)} className={`px-1.5 flex items-center justify-center border-l transition-colors rounded-r-md ${btnStyle} hover:brightness-95`}><Icon name="❌" size="{10}"/></button>
+                                                <button onClick={()=>cancelLab(p.id, lab.id)} className={`px-1.5 flex items-center justify-center border-l transition-colors rounded-r-md ${btnStyle} hover:brightness-95`}><Icon name="❌" size={10} /></button>
                                              )}
                                           </div>
                                         );
@@ -1071,20 +1072,20 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                                </div>
 
                                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 mt-2">
-                                  <button onClick={()=>createCommand({patientId: p.id, action:'nurse'})} className="py-2.5 bg-cyan-50/50 text-indigo-700 rounded-xl border border-cyan-100 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 hover:bg-cyan-100"><Icon name="📞" size="{14}"/> 導航回站</button>
-                                  <button onClick={()=>createCommand({patientId: p.id, action:'xray'})} className="py-2.5 bg-cyan-50/50 text-teal-700 rounded-xl border border-cyan-100 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 hover:bg-cyan-100"><Icon name="📲" size="{14}"/> 去 X 光</button>
+                                  <button onClick={()=>createCommand({patientId: p.id, action:'nurse'})} className="py-2.5 bg-cyan-50/50 text-indigo-700 rounded-xl border border-cyan-100 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 hover:bg-cyan-100"><Icon name="📞" size={14} /> 導航回站</button>
+                                  <button onClick={()=>createCommand({patientId: p.id, action:'xray'})} className="py-2.5 bg-cyan-50/50 text-teal-700 rounded-xl border border-cyan-100 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 hover:bg-cyan-100"><Icon name="📲" size={14} /> 去 X 光</button>
                                </div>
                                
                                <div className="col-span-2 pt-2 space-y-2">
                                   {st.dischargeCountdown !== null && st.dischargeCountdown !== undefined ? (
                                       <button onClick={() => undoDischarge(p.id)} className="w-full py-3 bg-amber-50 text-amber-700 border border-amber-300 rounded-xl font-black active:scale-95 transition-all flex items-center justify-center gap-2">
-                                         <Icon name="💳" size="{16}"/> 已觸發繳費，{st.dischargeCountdown} 分鐘自動結案倒數中 (點擊撤銷)
+                                         <Icon name="💳" size={16} /> 已觸發繳費，{st.dischargeCountdown} 分鐘自動結案倒數中 (點擊撤銷)
                                       </button>
                                   ) : (
                                       <>
-                                          <SwipeToConfirm onConfirm="{()=" text="滑動以離院結案">handleDischarge(p.id)} bgClass="bg-rose-50 border border-rose-100" textClass="text-rose-600" />
+                                          <SwipeToConfirm text="滑動以離院結案" onConfirm={()=>handleDischarge(p.id)} bgClass="bg-rose-50 border border-rose-100" textClass="text-rose-600" />
                                           <button onClick={() => startDischargeTimer(p.id)} className="w-full py-3 bg-slate-800 text-white rounded-xl font-black active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md">
-                                              <Icon name="💳" size="{16}"/> 批價模擬出院 (30分鐘倒數)
+                                              <Icon name="💳" size={16} /> 批價模擬出院 (30分鐘倒數)
                                           </button>
                                       </>
                                   )}
@@ -1097,17 +1098,17 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
               </div>
               
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/90 backdrop-blur-xl p-3 rounded-2xl shadow-xl border border-slate-200">
-                 <button disabled={page === 1} onClick={() => setPage(page - 1)} className="p-2 bg-slate-100 rounded-xl disabled:opacity-30 active:scale-90"><Icon name="◀️" size="{18}"/></button>
+                 <button disabled={page === 1} onClick={() => setPage(page - 1)} className="p-2 bg-slate-100 rounded-xl disabled:opacity-30 active:scale-90"><Icon name="◀️" size={18} /></button>
                  <span className="font-black text-sm px-4">第 {page} / {totalPages} 頁</span>
-                 <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="p-2 bg-slate-100 rounded-xl disabled:opacity-30 active:scale-90"><Icon name="▶️" size="{18}"/></button>
+                 <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="p-2 bg-slate-100 rounded-xl disabled:opacity-30 active:scale-90"><Icon name="▶️" size={18} /></button>
               </div>
            </main>
         )}
 
         <aside className={`${isStation ? 'w-[320px] shrink-0 border-l border-slate-200' : 'w-full'} bg-slate-50 p-6 flex flex-col h-full`}>
-           <h3 className="text-[15px] font-black text-rose-500 mb-6 flex items-center gap-2"><Icon name="🔔" size="{20}"/> {isStation ? '緊急呼叫' : '任務佇列'} ({alerts.length})</h3>
+           <h3 className="text-[15px] font-black text-rose-500 mb-6 flex items-center gap-2"><Icon name="🔔" size={20} /> {isStation ? '緊急呼叫' : '任務佇列'} ({alerts.length})</h3>
            <div className="flex-1 overflow-y-auto space-y-4 pr-2 pb-10">
-             {alerts.map(a => <AlertTaskCard alert="{a}" isStation="{isStation}" key="{a.id}" resolveAlert="{resolveAlert}" showToast="{showToast}"/> )}
+             {alerts.map(a => <AlertTaskCard key={a.id} alert={a} isStation={isStation} resolveAlert={resolveAlert} showToast={showToast} /> )}
              {alerts.length === 0 && <div className="text-center py-20 text-slate-400 font-bold text-sm">目前無任務</div>}
            </div>
         </aside>
@@ -1117,8 +1118,8 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
         <div className="fixed inset-0 z-[1000] bg-slate-900/90 backdrop-blur-md flex items-start justify-center pt-20 px-6 animate-fade-in">
            <div className="bg-white w-full max-w-xl rounded-[2rem] p-8 shadow-2xl flex flex-col border border-slate-200">
               <div className="flex justify-between items-center mb-6">
-                 <h3 className="text-xl font-black text-orange-600 flex items-center gap-3"><Icon name="📢" size="{24}"/> 全區緊急廣播</h3>
-                 <button onClick={() => setShowBroadcastModal(false)} className="p-2 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size="{14}"/></button>
+                 <h3 className="text-xl font-black text-orange-600 flex items-center gap-3"><Icon name="📢" size={24} /> 全區緊急廣播</h3>
+                 <button onClick={() => setShowBroadcastModal(false)} className="p-2 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size={14} /></button>
               </div>
               <div className="space-y-4">
                  <select onChange={(e) => { if(e.target.value){ showToast(`已發送廣播：${e.target.value}`); setShowBroadcastModal(false); } }} className="w-full p-4 rounded-xl border-2 border-orange-200 bg-orange-50 font-bold text-orange-800 outline-none">
@@ -1140,8 +1141,8 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
         <div className="fixed inset-0 z-[1000] bg-slate-900/90 backdrop-blur-md flex items-start justify-center pt-20 px-6 animate-fade-in">
            <div className="bg-white w-full max-w-xl rounded-[2rem] p-8 shadow-2xl flex flex-col border border-slate-200">
               <div className="flex justify-between items-center mb-6">
-                 <h3 className="text-xl font-black text-sky-600 flex items-center gap-3"><Icon name="ℹ️" size="{24}"/> 設定衛教跑馬燈模版</h3>
-                 <button onClick={() => setShowMarqueeModal(false)} className="p-2 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size="{14}"/></button>
+                 <h3 className="text-xl font-black text-sky-600 flex items-center gap-3"><Icon name="ℹ️" size={24} /> 設定衛教跑馬燈模版</h3>
+                 <button onClick={() => setShowMarqueeModal(false)} className="p-2 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size={14} /></button>
               </div>
               <div className="space-y-4">
                  <select onChange={(e) => { if(e.target.value){ setSystemConfig({ marqueeText: e.target.value }); showToast('衛教跑馬燈已更新'); setShowMarqueeModal(false); } }} className="w-full p-4 rounded-xl border-2 border-sky-200 bg-sky-50 font-bold text-sky-800 outline-none">
@@ -1163,8 +1164,8 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
         <div className="fixed inset-0 z-[1000] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
            <div className="bg-white dark:bg-slate-800 w-full max-w-xl rounded-[3rem] p-10 shadow-2xl flex flex-col border border-white/20">
               <div className="flex justify-between items-center mb-8">
-                 <h3 className="text-2xl font-black text-indigo-600 flex items-center gap-3"><Icon name="👥" size="{32}"/> 大量病人呼叫 (壓力測試)</h3>
-                 <button onClick={() => setShowMultiBedModal(false)} className="p-3 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size="{16}"/></button>
+                 <h3 className="text-2xl font-black text-indigo-600 flex items-center gap-3"><Icon name="👥" size={32} /> 大量病人呼叫 (壓力測試)</h3>
+                 <button onClick={() => setShowMultiBedModal(false)} className="p-3 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size={16} /></button>
               </div>
               <div className="bg-indigo-50 border-2 border-indigo-200 p-8 rounded-[2rem] text-center mb-6">
                  <p className="text-indigo-800 font-bold mb-4">將模擬 12 張病床同時發出求助訊號，</p>
@@ -1223,19 +1224,19 @@ function AlertTaskCard({ alert, isStation, resolveAlert, showToast }) {
                    } else {
                       setStatus('verified'); showToast('身分核對正確 (3讀5對完成)');
                    }
-                }} className="flex-1 py-2 bg-indigo-50 text-indigo-600 font-bold rounded-lg border border-indigo-200 text-xs active:scale-95"><Icon name="📱" size="{14}"/> 掃描核對</button>
+                }} className="flex-1 py-2 bg-indigo-50 text-indigo-600 font-bold rounded-lg border border-indigo-200 text-xs active:scale-95"><Icon name="📱" size={14} /> 掃描核對</button>
                 <select onChange={(e)=>{ if(e.target.value){ showToast(`任務已交班給 ${e.target.value}`); resolveAlert(alert.id); } }} className="flex-1 py-2 bg-amber-50 text-amber-700 font-bold rounded-lg border border-amber-200 text-xs text-center outline-none">
                    <option value="">🔄 一鍵交班</option>
                    {STAFF_LIST.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                 </select>
              </div>
-             <SwipeToConfirm onConfirm="{()=" text="滑動以釋放任務">setStatus('pending')} bgClass="bg-slate-200 border border-slate-300" textClass="text-slate-600" />
+             <SwipeToConfirm text="滑動以釋放任務" onConfirm={()=>setStatus('pending')} bgClass="bg-slate-200 border border-slate-300" textClass="text-slate-600" />
           </div>
        )}
 
        {status === 'verified' && (
           <div className="space-y-2 animate-fade-in">
-             <div className="bg-emerald-100 text-emerald-700 text-xs font-black p-2 rounded-lg text-center mb-2 flex items-center justify-center gap-1"><Icon name="✅" size="{14}"/> 核對無誤</div>
+             <div className="bg-emerald-100 text-emerald-700 text-xs font-black p-2 rounded-lg text-center mb-2 flex items-center justify-center gap-1"><Icon name="✅" size={14} /> 核對無誤</div>
              <button onClick={() => resolveAlert(alert.id)} className="w-full py-2.5 bg-emerald-500 text-white font-black rounded-xl shadow-md active:scale-95">完成任務並歸檔</button>
           </div>
        )}
@@ -1259,4 +1260,5 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-export default function App() { return <ErrorBoundary><MainApp/></ErrorBoundary>; }
+export default function App() { return <ErrorBoundary><MainApp /></ErrorBoundary>; }
+```eof
