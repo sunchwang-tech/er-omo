@@ -4,13 +4,12 @@ import { getDatabase, ref, onValue, set, update, remove } from 'firebase/databas
 
 // === Firebase 雲端初始化設定 ===
 const firebaseConfig = {
-   apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
+  apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
   authDomain: "er-omo.firebaseapp.com",
   projectId: "er-omo",
   storageBucket: "er-omo.firebasestorage.app",
   messagingSenderId: "402348034619",
-  appId: "1:402348034619:web:d756aa4bdd7bbab92e2a1e",
-  measurementId: "G-PFMDWBMNHV"
+  appId: "1:402348034619:web:d756aa4bdd7bbab92e2a1e"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -125,19 +124,19 @@ const SwipeToConfirm = ({ onConfirm, text, bgClass, textClass, icon }) => {
          onTouchMove={e=>handleMove(e.touches[0].clientX)} onTouchEnd={handleEnd} onMouseMove={e=>e.buttons===1&&handleMove(e.clientX)} onMouseUp={handleEnd} onMouseLeave={handleEnd}>
       <span className={`text-xs sm:text-sm font-bold z-0 transition-opacity ${unlocked ? 'text-white' : textClass}`}>{unlocked ? '✅ 已確認' : text}</span>
       <div className={`absolute left-1 top-1 w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-lg flex items-center justify-center shadow-md z-10 transition-transform ${unlocked ? 'opacity-0' : ''}`} 
-           style={{ transform: `translateX(${dragX}px)`, transition: dragX===0?'transform 0.3s ease':'none' }}>{icon || <Icon name="▶️" size={16}/>}</div>
+           style={{ transform: `translateX(${dragX}px)`, transition: dragX===0?'transform 0.3s ease':'none' }}>{icon || <Icon name="▶️" size={16} />}</div>
     </div>
   );
 };
 
 const HeaderSettings = ({ settings, toggleSetting }) => (
   <div className="flex items-center gap-1.5 sm:gap-2">
-    <button onClick={() => toggleSetting('voice')} className={`p-2 rounded-full transition-colors ${settings.voice ? 'bg-sky-100 text-sky-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name={settings.voice ? "🔊" : "🔇"} size={18}/></button>
-    <button onClick={() => toggleSetting('vibe')} className={`p-2 rounded-full transition-colors ${settings.vibe ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name="📳" size={18}/></button>
+    <button onClick={() => toggleSetting('voice')} className={`p-2 rounded-full transition-colors ${settings.voice ? 'bg-sky-100 text-sky-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name={settings.voice ? "🔊" : "🔇"} size={18} /></button>
+    <button onClick={() => toggleSetting('vibe')} className={`p-2 rounded-full transition-colors ${settings.vibe ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-slate-100 text-slate-400'}`}><Icon name="📳" size={18} /></button>
     <button onClick={() => toggleSetting('elderMode')} className={`px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 font-bold text-sm ${settings.elderMode ? 'bg-indigo-500 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-       <Icon name="Aa" size={16}/> {settings.elderMode ? '放大' : '標準'}
+       <Icon name="Aa" size={16} /> {settings.elderMode ? '放大' : '標準'}
     </button>
-    <button onClick={() => toggleSetting('isDarkMode')} className="p-2 rounded-full bg-slate-100 text-slate-500"><Icon name={settings.isDarkMode ? "☀️" : "🌙"} size={18}/></button>
+    <button onClick={() => toggleSetting('isDarkMode')} className="p-2 rounded-full bg-slate-100 text-slate-500"><Icon name={settings.isDarkMode ? "☀️" : "🌙"} size={18} /></button>
   </div>
 );
 
@@ -153,6 +152,7 @@ function MainApp() {
   const [commands, setCommands] = useState([]);
   const [systemConfig, setSystemConfig] = useState({ marqueeText: '【急診衛教宣導】進入醫療中心請全程配戴口罩。' });
 
+  // === Firebase 監聽機制 (嚴格單向資料流) ===
   useEffect(() => {
     const psRef = ref(db, 'patientsState');
     const psUnsub = onValue(psRef, (snapshot) => {
@@ -189,6 +189,7 @@ function MainApp() {
     };
   }, []);
 
+  // 倒數計時器
   useEffect(() => {
     const interval = setInterval(() => {
       const updates = {};
@@ -229,6 +230,7 @@ function MainApp() {
     }
   }, [settings.elderMode, settings.isDarkMode]);
 
+  // V62.9 核心修復：強制合併深層屬性，防止未定義欄位覆蓋
   const getPatientData = (id) => {
     const defaultData = { 
         currentStep: 1, 
@@ -243,15 +245,25 @@ function MainApp() {
         isDischarged: false,
         dischargeCountdown: null
     };
-    return { ...defaultData, ...(patientsState[id] || {}) };
+    // 確保即使 firebase 返回的物件缺少某些陣列/物件屬性，也能被 defaultData 補齊
+    const fireData = patientsState[id] || {};
+    return { 
+        ...defaultData, 
+        ...fireData,
+        labStatus: { ...defaultData.labStatus, ...(fireData.labStatus || {}) },
+        consents: { ...defaultData.consents, ...(fireData.consents || {}) },
+        reminders: fireData.reminders || defaultData.reminders
+    };
   };
 
+  // V62.9 核心修復：拔除本地狀態干擾，100% 寫入 Firebase
   const updatePatientState = (id, data) => {
     const current = getPatientData(id);
     const updatedData = { ...current, ...data };
-    setPatientsState(prev => ({ ...prev, [id]: updatedData }));
+    
+    // 直接寫入雲端，依賴 onValue 來觸發全站畫面更新
     set(ref(db, `patientsState/${id}`), updatedData).catch(err => {
-        alert("資料庫寫入被拒，請檢查 Firebase 連線");
+        alert("資料庫寫入被拒，請檢查 Firebase Rules 權限設定");
         console.error(err);
     });
   };
@@ -259,34 +271,28 @@ function MainApp() {
   const createAlert = (data) => {
     const id = Math.random().toString(36).substr(2, 9);
     const newAlert = { id, ...data, timestamp: Date.now(), status: 'pending' };
-    setAlerts(prev => [newAlert, ...prev].sort((a,b) => b.timestamp - a.timestamp));
-    set(ref(db, `alerts/${id}`), newAlert).catch(err => alert("呼叫失敗，請檢查網路連線"));
+    set(ref(db, `alerts/${id}`), newAlert).catch(err => alert("呼叫寫入失敗，請檢查 Firebase 權限"));
   };
 
   const resolveAlert = (id) => {
-    setAlerts(prev => prev.filter(a => a.id !== id));
     remove(ref(db, `alerts/${id}`));
   };
 
   const clearAllAlerts = () => {
-    setAlerts([]); setCommands([]);
     remove(ref(db, 'alerts')); remove(ref(db, 'commands'));
   };
 
   const createCommand = (data) => {
     const id = Math.random().toString(36).substr(2, 9);
     const newCmd = { id, ...data, timestamp: Date.now() };
-    setCommands(prev => [newCmd, ...prev]);
     set(ref(db, `commands/${id}`), newCmd).catch(e => console.warn(e));
   };
 
   const ackCommand = (id) => {
-    setCommands(prev => prev.filter(c => c.id !== id));
     remove(ref(db, `commands/${id}`));
   };
 
   const updateSystemConfig = (newConfig) => {
-    setSystemConfig(newConfig);
     set(ref(db, 'systemConfig'), newConfig).catch(e => console.warn(e));
   };
 
@@ -316,7 +322,7 @@ function MainApp() {
         <div className="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in">
           <div className="w-20 h-20 bg-emerald-100 rounded-[1.5rem] flex items-center justify-center text-emerald-600 shadow-inner mb-6 border border-emerald-200"><Icon name="📈" size={48} /></div>
           <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10"> Firebase 雲端穩定版 V62.9</div>
+          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10"> Firebase 跨裝置連線版 V62.9</div>
 
           <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] shadow-xl flex flex-col items-center hover:border-sky-400 transition-all">
@@ -324,8 +330,8 @@ function MainApp() {
                <h2 className="text-2xl font-black dark:text-white mb-2">一般使用者端</h2>
                <p className="text-slate-400 text-sm text-center mb-8">病患專屬導航與家屬授權探視。</p>
                <div className="w-full space-y-3">
-                  <button onClick={() => setRole('patient_verify')} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="🏥" size={24}/> 病患本人登入</button>
-                  <button onClick={() => setRole('family_select')} className="w-full bg-amber-50 hover:bg-amber-100 text-amber-600 py-4 rounded-2xl font-black text-lg border border-amber-200 transition-all flex items-center justify-center gap-2"><Icon name="👥" size={24}/> 家屬探視登入</button>
+                  <button onClick={() => setRole('patient_verify')} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="🏥" size={24} /> 病患本人登入</button>
+                  <button onClick={() => setRole('family_select')} className="w-full bg-amber-50 hover:bg-amber-100 text-amber-600 py-4 rounded-2xl font-black text-lg border border-amber-200 transition-all flex items-center justify-center gap-2"><Icon name="👥" size={24} /> 家屬探視登入</button>
                </div>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] shadow-xl flex flex-col items-center hover:border-indigo-400 transition-all">
@@ -333,8 +339,8 @@ function MainApp() {
                <h2 className="text-2xl font-black dark:text-white mb-2">醫療護理端</h2>
                <p className="text-slate-400 text-sm text-center mb-8">全區病患動態監控、發送廣播與接收任務。</p>
                <div className="w-full space-y-3">
-                  <button onClick={() => { setStaffTarget('station'); setRole('staff_login'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="💻" size={24}/> 護理站主控台</button>
-                  <button onClick={() => { setStaffTarget('nurse_mobile'); setRole('staff_login'); }} className="w-full bg-slate-50 hover:bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-lg border border-slate-200 transition-all flex items-center justify-center gap-2"><Icon name="📲" size={24}/> 護理師公務機</button>
+                  <button onClick={() => { setStaffTarget('station'); setRole('staff_login'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black text-lg shadow-md transition-all flex items-center justify-center gap-2"><Icon name="💻" size={24} /> 護理站主控台</button>
+                  <button onClick={() => { setStaffTarget('nurse_mobile'); setRole('staff_login'); }} className="w-full bg-slate-50 hover:bg-slate-100 text-slate-600 py-4 rounded-2xl font-black text-lg border border-slate-200 transition-all flex items-center justify-center gap-2"><Icon name="📲" size={24} /> 護理師公務機</button>
                </div>
             </div>
           </div>
@@ -348,7 +354,7 @@ function MainApp() {
       {(role === 'patient_verify' || role === 'family_select') && (
         <div className="flex-1 p-6 overflow-y-auto animate-fade-in">
           <header className="flex justify-between items-center mb-8 max-w-6xl mx-auto">
-             <button onClick={() => setRole(null)} className="flex items-center gap-2 text-slate-500 font-bold bg-white dark:bg-slate-800 px-4 py-2 rounded-full shadow-sm"><Icon name="◀️" size={16}/> 返回</button>
+             <button onClick={() => setRole(null)} className="flex items-center gap-2 text-slate-500 font-bold bg-white dark:bg-slate-800 px-4 py-2 rounded-full shadow-sm"><Icon name="◀️" size={16} /> 返回</button>
              <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
           </header>
           <h2 className="text-3xl font-black mb-8 dark:text-white text-center">請選擇模擬對象 (70 位)</h2>
