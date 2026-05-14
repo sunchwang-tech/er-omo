@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onValue, set, update, remove } from 'firebase/database';
+import { getDatabase, ref, onValue, set, update, remove, get } from 'firebase/database';
 
 // === Firebase 雲端初始化設定 ===
 const firebaseConfig = {
@@ -152,8 +152,16 @@ function MainApp() {
   const [commands, setCommands] = useState([]);
   const [systemConfig, setSystemConfig] = useState({ marqueeText: '【急診衛教宣導】進入醫療中心請全程配戴口罩。' });
 
-  // === Firebase 監聽機制 (嚴格單向資料流) ===
+  // === V62.10: 檢查 Firebase 連線狀態的綠點 ===
+  const [isConnected, setIsConnected] = useState(false);
+
   useEffect(() => {
+    // 監聽連線狀態
+    const connectedRef = ref(db, '.info/connected');
+    onValue(connectedRef, (snap) => {
+      setIsConnected(snap.val() === true);
+    });
+
     const psRef = ref(db, 'patientsState');
     const psUnsub = onValue(psRef, (snapshot) => {
       setPatientsState(snapshot.val() || {});
@@ -210,12 +218,12 @@ function MainApp() {
         }
       });
 
-      if (hasUpdates) {
+      if (hasUpdates && isConnected) {
         update(ref(db), updates).catch(e => console.warn(e));
       }
     }, 60000);
     return () => clearInterval(interval);
-  }, [patientsState]);
+  }, [patientsState, isConnected]);
 
   useEffect(() => {
     if (settings.elderMode) {
@@ -230,7 +238,7 @@ function MainApp() {
     }
   }, [settings.elderMode, settings.isDarkMode]);
 
-  // V62.9 核心修復：強制合併深層屬性，防止未定義欄位覆蓋
+  // V62.10: 極度乾淨的純讀取函數 (不涉及寫入邏輯)
   const getPatientData = (id) => {
     const defaultData = { 
         currentStep: 1, 
@@ -245,47 +253,56 @@ function MainApp() {
         isDischarged: false,
         dischargeCountdown: null
     };
-    // 確保即使 firebase 返回的物件缺少某些陣列/物件屬性，也能被 defaultData 補齊
-    const fireData = patientsState[id] || {};
-    return { 
-        ...defaultData, 
-        ...fireData,
-        labStatus: { ...defaultData.labStatus, ...(fireData.labStatus || {}) },
-        consents: { ...defaultData.consents, ...(fireData.consents || {}) },
-        reminders: fireData.reminders || defaultData.reminders
-    };
+    return { ...defaultData, ...(patientsState[id] || {}) };
   };
 
-  // V62.9 核心修復：拔除本地狀態干擾，100% 寫入 Firebase
-  const updatePatientState = (id, data) => {
-    const current = getPatientData(id);
-    const updatedData = { ...current, ...data };
-    
-    // 直接寫入雲端，依賴 onValue 來觸發全站畫面更新
-    set(ref(db, `patientsState/${id}`), updatedData).catch(err => {
-        alert("資料庫寫入被拒，請檢查 Firebase Rules 權限設定");
-        console.error(err);
-    });
+  // V62.10 終極修復：強制讀取 Firebase 最新快照後再寫入，完全避免狀態競爭
+  const updatePatientState = async (id, data) => {
+    if (!isConnected) {
+       alert("🚨 系統目前未連線至 Firebase！請檢查網路或重新整理。");
+       return;
+    }
+    try {
+        const snapshot = await get(ref(db, `patientsState/${id}`));
+        const currentFirebaseData = snapshot.val() || getPatientData(id);
+        const updatedData = { ...currentFirebaseData, ...data };
+        
+        await set(ref(db, `patientsState/${id}`), updatedData);
+        console.log(`✅ 成功寫入 ${id} 狀態:`, updatedData);
+    } catch (err) {
+        console.error("❌ 寫入 Firebase 失敗:", err);
+        alert(`資料庫寫入被拒！錯誤代碼: ${err.message}`);
+    }
   };
 
-  const createAlert = (data) => {
+  const createAlert = async (data) => {
+    if (!isConnected) return alert("🚨 系統未連線！");
     const id = Math.random().toString(36).substr(2, 9);
     const newAlert = { id, ...data, timestamp: Date.now(), status: 'pending' };
-    set(ref(db, `alerts/${id}`), newAlert).catch(err => alert("呼叫寫入失敗，請檢查 Firebase 權限"));
+    
+    try {
+        await set(ref(db, `alerts/${id}`), newAlert);
+        console.log(`✅ 成功建立任務:`, newAlert);
+    } catch (err) {
+        alert("呼叫寫入失敗，請檢查 Firebase 權限");
+        console.error(err);
+    }
   };
 
   const resolveAlert = (id) => {
-    remove(ref(db, `alerts/${id}`));
+    if (!isConnected) return;
+    remove(ref(db, `alerts/${id}`)).catch(e => console.error(e));
   };
 
   const clearAllAlerts = () => {
+    if (!isConnected) return;
     remove(ref(db, 'alerts')); remove(ref(db, 'commands'));
   };
 
   const createCommand = (data) => {
+    if (!isConnected) return;
     const id = Math.random().toString(36).substr(2, 9);
-    const newCmd = { id, ...data, timestamp: Date.now() };
-    set(ref(db, `commands/${id}`), newCmd).catch(e => console.warn(e));
+    set(ref(db, `commands/${id}`), { id, ...data, timestamp: Date.now() }).catch(e => console.error(e));
   };
 
   const ackCommand = (id) => {
@@ -293,7 +310,8 @@ function MainApp() {
   };
 
   const updateSystemConfig = (newConfig) => {
-    set(ref(db, 'systemConfig'), newConfig).catch(e => console.warn(e));
+    if (!isConnected) return;
+    set(ref(db, 'systemConfig'), newConfig).catch(e => console.error(e));
   };
 
   const toggleSetting = (key) => setSettings(s => ({...s, [key]: !s[key]}));
@@ -322,7 +340,10 @@ function MainApp() {
         <div className="flex-1 flex flex-col items-center justify-center p-6 animate-fade-in">
           <div className="w-20 h-20 bg-emerald-100 rounded-[1.5rem] flex items-center justify-center text-emerald-600 shadow-inner mb-6 border border-emerald-200"><Icon name="📈" size={48} /></div>
           <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10"> Firebase 跨裝置連線版 V62.9</div>
+          <div className="bg-emerald-50 text-emerald-600 font-bold px-4 py-1.5 rounded-full border border-emerald-100 text-sm mb-10 flex items-center gap-2"> 
+             <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></div>
+             Firebase 連線除錯版 V62.10
+          </div>
 
           <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 px-4">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] shadow-xl flex flex-col items-center hover:border-sky-400 transition-all">
@@ -382,11 +403,11 @@ function MainApp() {
           createAlert={createAlert} commands={commands} ackCommand={ackCommand} systemConfig={systemConfig} 
           isFamily={role === 'family_app'} 
           isProxy={getPatientData(selectedPatient.id).proxyEnabled} 
-          alerts={alerts} resolveAlert={resolveAlert} updatePatientState={updatePatientState} 
+          alerts={alerts} resolveAlert={resolveAlert} updatePatientState={updatePatientState} isConnected={isConnected}
         />
       )}
       {(role === 'station' || role === 'nurse_mobile') && (
-        <NurseApp role={role} nurseName={selectedNurse} patientsState={patientsState} updatePatientState={updatePatientState} getPatientData={getPatientData} alerts={alerts} resolveAlert={resolveAlert} createAlert={createAlert} commands={commands} createCommand={createCommand} ackCommand={ackCommand} settings={settings} toggleSetting={toggleSetting} onLogout={() => setRole(null)} setSystemConfig={updateSystemConfig} clearAllAlerts={clearAllAlerts} systemConfig={systemConfig} />
+        <NurseApp role={role} nurseName={selectedNurse} patientsState={patientsState} updatePatientState={updatePatientState} getPatientData={getPatientData} alerts={alerts} resolveAlert={resolveAlert} createAlert={createAlert} commands={commands} createCommand={createCommand} ackCommand={ackCommand} settings={settings} toggleSetting={toggleSetting} onLogout={() => setRole(null)} setSystemConfig={updateSystemConfig} clearAllAlerts={clearAllAlerts} systemConfig={systemConfig} isConnected={isConnected} />
       )}
     </div>
   );
@@ -456,7 +477,7 @@ function PatientLogin({ patient, onSuccess, onBack, settings }) {
   );
 }
 
-function PatientApp({ patient, state, settings, toggleSetting, onLogout, createAlert, commands, ackCommand, systemConfig, isFamily, isProxy, alerts, resolveAlert, updatePatientState }) {
+function PatientApp({ patient, state, settings, toggleSetting, onLogout, createAlert, commands, ackCommand, systemConfig, isFamily, isProxy, alerts, resolveAlert, updatePatientState, isConnected }) {
   const [activeTab, setActiveTab] = useState('progress');
   const [activeDest, setActiveDest] = useState(null);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -612,6 +633,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
           <div className="flex items-center gap-2">
             <Icon name="📈" size={20} className="text-rose-500" /> <h1 className="text-lg font-black text-sky-600">某某醫學中心</h1>
             {isFamily && isProxy && <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-0.5 rounded-md ml-2 border border-purple-200">代理操作中</span>}
+            <div className={`w-2 h-2 rounded-full ml-1 ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
           </div>
           <div className="flex items-center gap-3 mt-1">
             <h2 className="text-3xl font-black dark:text-white tracking-tight">{patient.name}</h2>
@@ -873,7 +895,7 @@ function PatientApp({ patient, state, settings, toggleSetting, onLogout, createA
   );
 }
 
-function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatientData, alerts, resolveAlert, createAlert, commands, createCommand, ackCommand, settings, toggleSetting, onLogout, setSystemConfig, clearAllAlerts, systemConfig }) {
+function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatientData, alerts, resolveAlert, createAlert, commands, createCommand, ackCommand, settings, toggleSetting, onLogout, setSystemConfig, clearAllAlerts, systemConfig, isConnected }) {
   const [page, setPage] = useState(1);
   const [zoneFilter, setZoneFilter] = useState('全區');
   const [statusFilter, setStatusFilter] = useState('全部狀態');
@@ -975,7 +997,13 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
         <div className="flex justify-between items-center px-6 py-3">
            <div className="flex items-center gap-3">
              <Icon name="🛡️" size={28} />
-             <div><h2 className="font-black text-xl">{isStation ? '護理站主控台' : '公務機任務中心'}</h2><p className="text-xs text-slate-500 font-bold">目前登入：{nurseName}</p></div>
+             <div>
+                <h2 className="font-black text-xl flex items-center gap-2">
+                   {isStation ? '護理站主控台' : '公務機任務中心'}
+                   <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                </h2>
+                <p className="text-xs text-slate-500 font-bold">目前登入：{nurseName}</p>
+             </div>
            </div>
            <div className="flex items-center gap-4">
              <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
@@ -1115,7 +1143,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
         <aside className={`${isStation ? 'w-[320px] shrink-0 border-l border-slate-200' : 'w-full'} bg-slate-50 p-6 flex flex-col h-full`}>
            <h3 className="text-[15px] font-black text-rose-500 mb-6 flex items-center gap-2"><Icon name="🔔" size={20} /> {isStation ? '緊急呼叫' : '任務佇列'} ({alerts.length})</h3>
            <div className="flex-1 overflow-y-auto space-y-4 pr-2 pb-10">
-             {alerts.map(a => <AlertTaskCard key={a.id} alert={a} isStation={isStation} resolveAlert={resolveAlert} showToast={showToast} /> )}
+             {alerts.map(a => <AlertTaskCard key={a.id} alert={a} isStation={isStation} resolveAlert={resolveAlert} showToast={showToast} isConnected={isConnected} /> )}
              {alerts.length === 0 && <div className="text-center py-20 text-slate-400 font-bold text-sm">目前無任務</div>}
            </div>
         </aside>
@@ -1152,7 +1180,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                  <button onClick={() => setShowMarqueeModal(false)} className="p-2 bg-slate-100 rounded-full active:scale-90 transition-transform"><Icon name="❌" size={14} /></button>
               </div>
               <div className="space-y-4">
-                 <select onChange={(e) => { if(e.target.value){ setSystemConfig({ marqueeText: e.target.value }); showToast('衛教跑馬燈已更新'); setShowMarqueeModal(false); } }} className="w-full p-4 rounded-xl border-2 border-sky-200 bg-sky-50 font-bold text-sky-800 outline-none">
+                 <select onChange={(e) => { if(e.target.value){ updateSystemConfig({ marqueeText: e.target.value }); showToast('衛教跑馬燈已更新'); setShowMarqueeModal(false); } }} className="w-full p-4 rounded-xl border-2 border-sky-200 bg-sky-50 font-bold text-sky-800 outline-none">
                     <option value="">-- 選擇跑馬燈模版 --</option>
                     <option value="目前等候人數較多，請耐心等候，急診依檢傷分類非先到先看。">目前等候人數較多，請耐心等候</option>
                     <option value="流感好發季，請確實佩戴口罩，並落實勤洗手。">流感好發季，請確實佩戴口罩</option>
@@ -1160,7 +1188,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
                  </select>
                  <div className="flex gap-2">
                     <input type="text" placeholder="自訂跑馬燈內容..." id="customMarquee" className="flex-1 border-2 border-slate-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-sky-400" />
-                    <button onClick={() => { const v = document.getElementById('customMarquee').value; if(v) { setSystemConfig({ marqueeText: v }); showToast('衛教跑馬燈已更新'); setShowMarqueeModal(false); } }} className="bg-sky-600 text-white font-black px-6 rounded-xl whitespace-nowrap active:scale-95">更新</button>
+                    <button onClick={() => { const v = document.getElementById('customMarquee').value; if(v) { updateSystemConfig({ marqueeText: v }); showToast('衛教跑馬燈已更新'); setShowMarqueeModal(false); } }} className="bg-sky-600 text-white font-black px-6 rounded-xl whitespace-nowrap active:scale-95">更新</button>
                  </div>
               </div>
            </div>
@@ -1195,7 +1223,7 @@ function NurseApp({ role, nurseName, patientsState, updatePatientState, getPatie
   );
 }
 
-function AlertTaskCard({ alert, isStation, resolveAlert, showToast }) {
+function AlertTaskCard({ alert, isStation, resolveAlert, showToast, isConnected }) {
   const p = PATIENTS_LIST.find(x => x.id === alert.patientId);
   const [status, setStatus] = useState('pending'); 
 
@@ -1218,7 +1246,7 @@ function AlertTaskCard({ alert, isStation, resolveAlert, showToast }) {
     <div className={`p-5 rounded-2xl shadow-sm border-l-4 transition-all animate-fade-in ${status==='pending'?'bg-white border-rose-500':'bg-sky-50 border-sky-500'}`}>
        <div className="flex justify-between items-start mb-2">
           <div><span className="font-black text-lg mr-2">BED {p?.bed}</span><span className="text-xs font-bold text-slate-500">{p?.name}</span></div>
-          {status === 'pending' && <button onClick={()=>setStatus('processing')} className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full active:scale-95">🙋‍♀️ 由我處理</button>}
+          {status === 'pending' && <button onClick={()=> { if(isConnected) setStatus('processing'); else window.alert("網路未連線！"); }} className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full active:scale-95">🙋‍♀️ 由我處理</button>}
        </div>
        <p className={`font-black mb-4 ${status==='pending'?'text-rose-600':'text-sky-700'}`}>{alert.message}</p>
        
