@@ -147,21 +147,17 @@ function MainApp() {
   const [selectedNurse, setSelectedNurse] = useState(null);
   const [settings, setSettings] = useState({ voice: true, vibe: true, elderMode: false, isDarkMode: false });
   
-  // === Firebase 雲端狀態 ===
   const [patientsState, setPatientsState] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [commands, setCommands] = useState([]);
   const [systemConfig, setSystemConfig] = useState({ marqueeText: '【急診衛教宣導】進入醫療中心請全程配戴口罩。' });
 
-  // === 初始化 Firebase 監聽器 ===
   useEffect(() => {
-    // 監聽患者狀態
     const psRef = ref(db, 'patientsState');
     const psUnsub = onValue(psRef, (snapshot) => {
       setPatientsState(snapshot.val() || {});
     });
 
-    // 監聽警報任務 (陣列處理)
     const alertsRef = ref(db, 'alerts');
     const alertsUnsub = onValue(alertsRef, (snapshot) => {
       const data = snapshot.val();
@@ -172,7 +168,6 @@ function MainApp() {
       }
     });
 
-    // 監聽指令
     const cmdRef = ref(db, 'commands');
     const cmdUnsub = onValue(cmdRef, (snapshot) => {
       const data = snapshot.val();
@@ -183,7 +178,6 @@ function MainApp() {
       }
     });
 
-    // 監聽系統設定
     const sysRef = ref(db, 'systemConfig');
     const sysUnsub = onValue(sysRef, (snapshot) => {
        setSystemConfig(snapshot.val() || { marqueeText: '【急診衛教宣導】進入醫療中心請全程配戴口罩。' });
@@ -194,7 +188,6 @@ function MainApp() {
     };
   }, []);
 
-  // 倒數計時器機制 (移至頂層以確保全域運作，依賴於 patientsState)
   useEffect(() => {
     const interval = setInterval(() => {
       const updates = {};
@@ -207,7 +200,6 @@ function MainApp() {
              updates[`patientsState/${p.id}/dischargeCountdown`] = st.dischargeCountdown - 1;
              hasUpdates = true;
           } else {
-             // 倒數結束，觸發結案並清除倒數
              updates[`patientsState/${p.id}/isDischarged`] = true;
              updates[`patientsState/${p.id}/currentStatus`] = '已結案';
              updates[`patientsState/${p.id}/dischargeCountdown`] = null;
@@ -219,7 +211,7 @@ function MainApp() {
       if (hasUpdates) {
         update(ref(db), updates);
       }
-    }, 60000); // 每分鐘執行一次
+    }, 60000);
     return () => clearInterval(interval);
   }, [patientsState]);
 
@@ -236,7 +228,6 @@ function MainApp() {
     }
   }, [settings.elderMode, settings.isDarkMode]);
 
-  // V62.8 關鍵修復: 確保讀取最新狀態，並直接寫入 Firebase
   const getPatientData = (id) => {
     const defaultData = { 
         currentStep: 1, 
@@ -249,13 +240,12 @@ function MainApp() {
         sosEnabled: false, 
         proxyEnabled: false, 
         isDischarged: false,
-        dischargeCountdown: null // 加入初始值
+        dischargeCountdown: null
     };
     return { ...defaultData, ...(patientsState[id] || {}) };
   };
 
   const updatePatientState = (id, data) => {
-    // 嚴格取得當前 Firebase 狀態作為基底再合併
     const current = getPatientData(id);
     const updatedData = { ...current, ...data };
     set(ref(db, `patientsState/${id}`), updatedData);
@@ -1261,18 +1251,3 @@ class ErrorBoundary extends React.Component {
 
 export default function App() { return <ErrorBoundary><MainApp /></ErrorBoundary>; }
 ```eof
-
----
-
-### ✅ 核心功能留存與修正檢查報告 (V62.8)
-
-| 核心區塊 | 測試項目 | 狀態 | 備註 |
-| :--- | :--- | :--- | :--- |
-| **【跨裝置連線】** | Firebase 單一真值架構 (Single Source of Truth) | 🟢 修復 | 拔除舊版取值，患者狀態更新強制透過 `getPatientData` 作為基底寫入 Firebase，確保多裝置狀態同步。 |
-| **【主控台操作】** | 開立檢驗、授權代簽、開放 SOS 切換 | 🟢 修復 | 修正狀態合併邏輯，所有按鈕點擊後能即時將新狀態傳送至 Firebase，雙端介面同步變更。 |
-| **【離院操作】** | 30 分鐘倒數離院 / 滑動結案 / 撤銷 | 🟢 修復 | **補回批價倒數按鈕**；加入全域定時器監聽 `patientsState` 處理倒數；狀態變更同步至雲端。 |
-| **【病患端操作】** | 發送「要幫忙」SOS 等求助任務 | 🟢 修復 | 修正 `createAlert` 參數傳遞，按下後任務順利寫入 Firebase `alerts` 陣列，護理端即時跳出警報。 |
-| **【核心保留】** | 2.5D 高塔動態地圖導航與定位點 | 🟢 保留 | 介面無更動。 |
-| **【核心保留】** | 行動護理機 3讀5對 與 任務交班 | 🟢 保留 | 介面無更動。 |
-| **【核心保留】** | 大量病患呼叫模擬 (壓力測試) | 🟢 保留 | 介面無更動。 |
-| **【核心保留】** | 廣播與跑馬燈自訂選單 | 🟢 保留 | 介面無更動。 |
