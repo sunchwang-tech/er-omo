@@ -1,7 +1,7 @@
-// [V59 導航箭頭閃爍與呼叫一鍵導航版] 
-// 1. 修正導航路線繪製：將腳印 SVG 替換為箭頭 SVG，並加上 arrowFlash 閃爍放大動畫。
-// 2. 護理呼叫提醒優化：頂部呼叫提示框支援點擊，點擊後會自動切換至導航頁面並開始導航。
-// 3. 家屬端導航功能解鎖：家屬/代理人模式的導航選單，除「帶我去找病患」外，同步開放所有檢查地點清單。
+// [V61 檢查取消、區域更新與緊急廣播套版] 
+// 1. 新增主控台檢查項目的「取消 (X)」按鈕，點擊後重置為未開立。
+// 2. 更新病房分區：將急救區改為重症區、輕症區改為看診區，並新增兒科區。調整主控台篩選排列。
+// 3. 將一級急救按鈕併入「緊急廣播」，並在廣播視窗內新增「暴力」、「大量傷患」、「一級急救」快速套版。
 // 4. 嚴格保留所有核心連線與主控台邏輯。
 // 5. 修復在 iframe 環境下執行 window.history.replaceState 造成的 SecurityError。
 
@@ -39,11 +39,11 @@ try {
 }
 
 const PATIENTS_LIST = [
-  { id: 'A045', bed: '01', name: '李Ｏ雄', fullName: '李大雄', dob: '1952/05/10', age: 72, triageLevel: 2, initialWaitingCount: 28, token: 'tk_8f2a1b', idLast4: '0000', zone: '急救區' },
-  { id: 'A046', bed: '03', name: '林Ｏ花', fullName: '林小花', dob: '1959/11/22', age: 65, triageLevel: 4, initialWaitingCount: 18, token: 'tk_9c3d4e', idLast4: '0000', zone: '輕症區' },
+  { id: 'A045', bed: '01', name: '李Ｏ雄', fullName: '李大雄', dob: '1952/05/10', age: 72, triageLevel: 2, initialWaitingCount: 28, token: 'tk_8f2a1b', idLast4: '0000', zone: '重症區' },
+  { id: 'A046', bed: '03', name: '林Ｏ花', fullName: '林小花', dob: '1959/11/22', age: 65, triageLevel: 4, initialWaitingCount: 18, token: 'tk_9c3d4e', idLast4: '0000', zone: '看診區' },
   { id: 'A047', bed: '05', name: '王Ｏ吉', fullName: '王萬吉', dob: '1945/10/12', age: 78, triageLevel: 3, initialWaitingCount: 12, token: 'tk_1a2b3c', idLast4: '0000', zone: '留觀區' },
-  { id: 'A048', bed: '08', name: '陳Ｏ明', fullName: '陳志明', dob: '1970/08/15', age: 54, triageLevel: 1, initialWaitingCount: 0, token: 'tk_7e8f9g', idLast4: '0000', zone: '急救區' },
-  { id: 'A049', bed: '12', name: '張Ｏ雅', fullName: '張淑雅', dob: '1983/02/28', age: 41, triageLevel: 5, initialWaitingCount: 25, token: 'tk_4d5e6f', idLast4: '0000', zone: '輕症區' },
+  { id: 'A048', bed: '08', name: '陳Ｏ明', fullName: '陳小明', dob: '2016/08/15', age: 8, triageLevel: 1, initialWaitingCount: 0, token: 'tk_7e8f9g', idLast4: '0000', zone: '兒科區' }, // 變更為兒科區病患
+  { id: 'A049', bed: '12', name: '張Ｏ雅', fullName: '張淑雅', dob: '1983/02/28', age: 41, triageLevel: 5, initialWaitingCount: 25, token: 'tk_4d5e6f', idLast4: '0000', zone: '看診區' },
   { id: 'A050', bed: '15', name: '黃Ｏ智', fullName: '黃金智', dob: '1964/07/04', age: 60, triageLevel: 3, initialWaitingCount: 14, token: 'tk_2b3c4d', idLast4: '0000', zone: '留觀區' }
 ];
 
@@ -1501,14 +1501,20 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   const cycleLabStatus = (pId, labType) => {
     const state = getMergedState(patientsState[pId], pId);
     const curr = state.labStatus[labType]?.status || 'unprescribed';
-    const nextStatus = curr === 'unprescribed' ? 'pending' : curr === 'pending' ? 'processing' : curr === 'processing' ? 'done' : 'reported';
-    const nextText = nextStatus === 'pending' ? '待檢' : nextStatus === 'processing' ? '處理中' : nextStatus === 'done' ? '檢驗完成' : '報告已出';
+    const nextStatus = curr === 'unprescribed' ? 'pending' : curr === 'pending' ? 'processing' : curr === 'processing' ? 'done' : curr === 'done' ? 'reported' : 'unprescribed';
+    const nextText = nextStatus === 'pending' ? '待檢' : nextStatus === 'processing' ? '處理中' : nextStatus === 'done' ? '檢驗完成' : nextStatus === 'reported' ? '報告已出' : '未開立';
     
     let nextConsents = state.consents || { ct: 'disabled', admission: 'disabled' };
     if (labType === 'ct' && nextStatus === 'pending' && nextConsents.ct === 'disabled') { nextConsents.ct = 'pending'; showToast('已開立 CT，並派發同意書'); } 
     else showToast('狀態已更新');
     
     updatePatientState(pId, { labStatus: { ...state.labStatus, [labType]: { status: nextStatus, text: nextText, eta: nextStatus === 'done' || nextStatus === 'reported' ? '-' : '30分' } }, consents: nextConsents });
+  };
+
+  const cancelLabStatus = (pId, labType) => {
+    const state = getMergedState(patientsState[pId], pId);
+    updatePatientState(pId, { labStatus: { ...state.labStatus, [labType]: { status: 'unprescribed', text: '未開立', eta: '-' } } });
+    showToast('已取消該項檢查');
   };
 
   const toggleReminder = (pId, rId) => {
@@ -1540,15 +1546,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast('已觸發繳費成功，病患端啟動 30 分鐘自動離院倒數 (模擬 RFID 掃描事件)');
   };
 
-  const handleTriageBump = () => {
-    PATIENTS_LIST.forEach(p => {
-        createCommand({ patientId: p.id, action: 'triage_bump' });
-        const st = getMergedState(patientsState[p.id], p.id);
-        updatePatientState(p.id, { waitingCount: st.waitingCount + 5 }); 
-    });
-    showToast('已發送全區一級急救廣播，病患候診人數已自動展延');
-  };
-
   const handleMultiBedLinkage = () => {
     const testPatients = PATIENTS_LIST.slice(0, 3);
     if(testPatients[0]) createAlert({ patientId: testPatients[0].id, type: 'ivPain', message: '漏血/會痛', priority: 'high' });
@@ -1560,9 +1557,17 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   const handleSendGlobalBroadcast = () => {
     if (!customBroadcastText.trim()) return;
     createCommand({ patientId: 'GLOBAL', action: 'custom_emergency', message: customBroadcastText });
+    
+    if (customBroadcastText.includes('時間將延長') || customBroadcastText.includes('延長') || customBroadcastText.includes('急救中')) {
+        PATIENTS_LIST.forEach(p => {
+            const st = getMergedState(patientsState[p.id], p.id);
+            updatePatientState(p.id, { waitingCount: st.waitingCount + 5 }); 
+        });
+    }
+
     setShowGlobalBroadcast(false);
     setCustomBroadcastText('');
-    showToast('全區自訂緊急推播已送出！');
+    showToast('全區緊急廣播已送出！');
   };
 
   const handleUpdateMarquee = () => {
@@ -1611,9 +1616,8 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
             </div>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
-           <button onClick={handleTriageBump} className="shrink-0 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(225,29,72,0.3)] active:scale-95 transition-all"><AlertTriangle className="w-5 h-5 animate-pulse"/> 一級急救 (全區展延)</button>
            {role === 'station' && (
-              <button onClick={() => setShowGlobalBroadcast(true)} className="shrink-0 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(234,88,12,0.3)] active:scale-95 transition-all"><Megaphone className="w-5 h-5"/> 臨時全區廣播</button>
+              <button onClick={() => setShowGlobalBroadcast(true)} className="shrink-0 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(234,88,12,0.3)] active:scale-95 transition-all"><Megaphone className="w-5 h-5"/> 緊急廣播</button>
            )}
            <button onClick={handleMultiBedLinkage} className="shrink-0 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(79,70,229,0.3)] active:scale-95 transition-all"><Users className="w-5 h-5"/> 多床聯動 (模擬群呼)</button>
            {role === 'station' && (
@@ -1628,7 +1632,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
           <main className="flex-[2.5] flex flex-col overflow-hidden border-r border-slate-200 bg-slate-50/50">
              <div className="p-3 bg-white dark:bg-slate-800 border-b flex justify-between items-center gap-2">
                 <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg">
-                   {['all','急救區','留觀區','輕症區'].map(z => (
+                   {['all','看診區','兒科區','留觀區','重症區'].map(z => (
                       <button key={z} onClick={()=>setZoneFilter(z)} className={`px-4 py-1.5 rounded text-sm font-bold ${zoneFilter===z?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>{z==='all'?'全區':z}</button>
                    ))}
                 </div>
@@ -1692,7 +1696,16 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                                  {LAB_TYPES.map(l => {
                                     const lState = st.labStatus[l.id]?.status || 'unprescribed';
                                     const label = lState==='reported'?'報告已出':lState==='done'?'完成':lState==='processing'?'處理':lState==='pending'?'待檢':'未開';
-                                    return <button key={l.id} onClick={() => cycleLabStatus(p.id, l.id)} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${lState!=='unprescribed' ? LAB_TYPES.find(x=>x.id===l.id).activeCls : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-400 hover:bg-slate-50'}`}>{l.label} [{label}]</button>
+                                    return (
+                                      <div key={l.id} className="flex items-center">
+                                         <button onClick={() => cycleLabStatus(p.id, l.id)} className={`px-3 py-1.5 ${lState!=='unprescribed' ? 'rounded-l' : 'rounded'} text-xs font-bold border transition-colors ${lState!=='unprescribed' ? LAB_TYPES.find(x=>x.id===l.id).activeCls : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-400 hover:bg-slate-50'}`}>{l.label} [{label}]</button>
+                                         {lState !== 'unprescribed' && (
+                                            <button onClick={() => cancelLabStatus(p.id, l.id)} className={`px-2 py-1.5 rounded-r text-xs font-bold border-y border-r transition-colors ${LAB_TYPES.find(x=>x.id===l.id).activeCls} hover:brightness-90 flex items-center justify-center`} title="取消檢查">
+                                               <X className="w-3 h-3" />
+                                            </button>
+                                         )}
+                                      </div>
+                                    );
                                  })}
                               </div>
 
@@ -1843,12 +1856,21 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
             <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] w-full max-w-lg shadow-2xl relative border-2 border-orange-500">
                <button onClick={() => setShowGlobalBroadcast(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-8 h-8"/></button>
-               <h3 className="text-3xl font-black mb-3 text-orange-600 flex items-center gap-3"><Megaphone className="w-8 h-8"/> 發送臨時緊急推播</h3>
-               <p className="text-slate-500 text-base mb-8 font-bold">此訊息將<span className="text-rose-500">強制突破靜音設定</span>，在全區病患手機以最高音量播報並全螢幕閃爍。請謹慎使用。</p>
+               <h3 className="text-3xl font-black mb-3 text-orange-600 flex items-center gap-3"><Megaphone className="w-8 h-8"/> 發送緊急廣播</h3>
+               <p className="text-slate-500 text-base mb-6 font-bold">此訊息將<span className="text-rose-500">強制突破靜音設定</span>，在全區病患手機以最高音量播報並全螢幕閃爍。請謹慎使用。</p>
                
+               <div className="flex flex-col gap-2 mb-6">
+                  <span className="text-sm font-bold text-slate-400">快速套版：</span>
+                  <div className="flex flex-wrap gap-2">
+                     <button onClick={() => setCustomBroadcastText('急診內科診間目前發生持刀攻擊事件請各位立即遠離現場,並遵循醫護人員指示以確保安全。')} className="bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-rose-100 transition-colors">暴力事件</button>
+                     <button onClick={() => setCustomBroadcastText('本院急診已啟動大量傷患應變。看診與檢查時間將延長，請病友與家屬配合並諒解。')} className="bg-orange-50 text-orange-700 border border-orange-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-100 transition-colors">大量傷患</button>
+                     <button onClick={() => setCustomBroadcastText('急診室有緊急病人急救中，看診、檢查時間將延長，請病友與家屬配合並諒解。')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">一級急救</button>
+                  </div>
+               </div>
+
                <textarea 
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 outline-none focus:border-orange-500 resize-none h-40 text-xl font-bold" 
-                  placeholder="請輸入警報內容（例：發生火警，請依循綠色指示燈前往大門疏散）"
+                  placeholder="請輸入警報內容..."
                   value={customBroadcastText}
                   onChange={(e) => setCustomBroadcastText(e.target.value)}
                ></textarea>
