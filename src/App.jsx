@@ -1,9 +1,9 @@
-// [V61 檢查取消、區域更新與緊急廣播套版] 
-// 1. 新增主控台檢查項目的「取消 (X)」按鈕，點擊後重置為未開立。
-// 2. 更新病房分區：將急救區改為重症區、輕症區改為看診區，並新增兒科區。調整主控台篩選排列。
-// 3. 將一級急救按鈕併入「緊急廣播」，並在廣播視窗內新增「暴力」、「大量傷患」、「一級急救」快速套版。
-// 4. 嚴格保留所有核心連線與主控台邏輯。
-// 5. 修復在 iframe 環境下執行 window.history.replaceState 造成的 SecurityError。
+// [V62 跑馬燈套版、離院清任務與護理端文字修正版] 
+// 1. 跑馬燈增加快速套版選項 (滿床轉院宣導、腦脊髓膜炎、腸病毒)。
+// 2. 病人離院時，自動從任務佇列中清除該病患相關的所有任務。
+// 3. 護理師端「搶單認領」按鈕改為「主責護師處理中」。
+// 4. 首頁「開發者綜合入口」改為「版本訊息 V62」。
+// 5. 嚴格保留所有核心連線、主控台邏輯與 V61 的版面架構。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -574,7 +574,7 @@ function MainApp() {
             </div>
             <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-12 h-12" /></div>
             <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">開發者綜合入口</p>
+            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V62</p>
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
               
@@ -1533,7 +1533,12 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast(`同意書狀態已切換為：${next === 'pending' ? '待簽署' : next === 'signed' ? '已簽署' : '未開立'}`);
   };
 
-  const handleDischarge = (pId) => { updatePatientState(pId, { tokenExpired: true, currentStep: 4, currentStatus: '已離院' }); showToast('病患已離院結案，相關連結已註銷'); };
+  const handleDischarge = (pId) => { 
+    updatePatientState(pId, { tokenExpired: true, currentStep: 4, currentStatus: '已離院' }); 
+    // 移除該病患所有任務
+    alerts.filter(a => a.patientId === pId).forEach(a => resolveAlert(a.id));
+    showToast('病患已離院結案，相關任務與連結已註銷'); 
+  };
 
   const handleReadmit = (pId) => {
     const defaultPatient = PATIENTS_LIST.find(p => p.id === pId);
@@ -1551,7 +1556,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     if(testPatients[0]) createAlert({ patientId: testPatients[0].id, type: 'ivPain', message: '漏血/會痛', priority: 'high' });
     if(testPatients[1]) createAlert({ patientId: testPatients[1].id, type: 'toilet', message: '已暫離前往洗手間', priority: 'low' });
     if(testPatients[2]) createAlert({ patientId: testPatients[2].id, type: 'ivEmpty', message: '點滴不滴/沒了', priority: 'medium' });
-    showToast('已啟多床聯動：模擬多床病患發出呼叫，請測試接單');
+    showToast('已啟動多床聯動：模擬多床病患發出呼叫，請測試接單');
   };
 
   const handleSendGlobalBroadcast = () => {
@@ -1775,7 +1780,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                   {role === 'nurse_mobile' && (
                      <div className="space-y-4">
                         {a.status === 'pending' ? (
-                           <button onClick={()=>handleClaim(a)} className="w-full bg-sky-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 text-xl">搶單認領</button>
+                           <button onClick={()=>handleClaim(a)} className="w-full bg-sky-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 text-xl">主責護師處理中</button>
                         ) : isMe ? (
                            <>
                               {a.patientId !== 'GLOBAL' && (
@@ -1890,6 +1895,15 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                <h3 className="text-3xl font-black mb-3 text-sky-600 flex items-center gap-3"><Info className="w-8 h-8"/> 設定衛教跑馬燈</h3>
                <p className="text-slate-500 text-base mb-8 font-bold">更改的文字將即時顯示於全區病患的手機頂端。</p>
                
+               <div className="flex flex-col gap-2 mb-6">
+                  <span className="text-sm font-bold text-slate-400">快速套版：</span>
+                  <div className="flex flex-wrap gap-2">
+                     <button onClick={() => setMarqueeInputText('目前急診留觀病患人數較多若您為輕症患者或希望轉至住家附近之醫療院所，請洽護理站醫護人員,我們將協助您辦理轉院事宜。')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors">滿床轉院宣導</button>
+                     <button onClick={() => setMarqueeInputText('國內新增腦脊髓膜炎確定病例,籲請民眾注意呼吸道衛生,出現疑似症狀應儘速就醫')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors">腦脊髓膜炎</button>
+                     <button onClick={() => setMarqueeInputText('腸病毒好發季,籲請民眾落實肥皂勤洗手及環境清消並留意嬰幼兒重症前兆病徵。')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors">腸病毒</button>
+                  </div>
+               </div>
+
                <textarea 
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 outline-none focus:border-sky-500 resize-none h-40 text-lg font-bold" 
                   placeholder="請輸入衛教或宣導文字..."
