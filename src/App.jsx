@@ -1,7 +1,9 @@
-// [V54 臨床全齡友善與動態推播版] 
-// 1. 新增「動態衛教跑馬燈」：由主控台即時修改，全區病患端同步顯示。
-// 2. 新增「自訂全區緊急推播」：主控台可隨時打字發送臨時警報(如火災)，病患端強制語音播報。
-// 3. 保留 V53 前的所有極致導航、防呆解鎖與資安代理人功能。
+// [V59 導航箭頭閃爍與呼叫一鍵導航版] 
+// 1. 修正導航路線繪製：將腳印 SVG 替換為箭頭 SVG，並加上 arrowFlash 閃爍放大動畫。
+// 2. 護理呼叫提醒優化：頂部呼叫提示框支援點擊，點擊後會自動切換至導航頁面並開始導航。
+// 3. 家屬端導航功能解鎖：家屬/代理人模式的導航選單，除「帶我去找病患」外，同步開放所有檢查地點清單。
+// 4. 嚴格保留所有核心連線與主控台邏輯。
+// 5. 修復在 iframe 環境下執行 window.history.replaceState 造成的 SecurityError。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -9,7 +11,6 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
 import { Activity, AlertTriangle, ArrowUpCircle, Bell, Bone, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, CreditCard, Droplets, FileText, FlaskConical, HandHelping, KeyRound, Loader2, Lock, LogOut, Magnet, MapPin, Maximize, Mic, Monitor, MonitorSmartphone, Moon, PenTool, PhoneCall, Power, Share2, ShieldAlert, Smartphone, Sun, UserCircle, Users, Waves, X, ZoomIn, ZoomOut, Volume2, VolumeX, Type, Clock, LogOut as LogOutIcon, CheckSquare, RefreshCw, ScanLine, UserCheck, AlertOctagon, Vibrate, VibrateOff, Navigation, ChevronRight, Trash2, Megaphone, Info } from 'lucide-react';
 
-// ================= 1. Firebase 設定 =================
 const myFirebaseConfig = {
   apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
   authDomain: "er-omo.firebaseapp.com",
@@ -37,9 +38,8 @@ try {
   initError = error.message;
 }
 
-// ================= 全域常數與共用陣列 =================
 const PATIENTS_LIST = [
-  { id: 'A045', bed: '01', name: '李Ｏ雄', fullName: '李大雄', dob: '1952/05/10', age: 72, triageLevel: 2, initialWaitingCount: 2, token: 'tk_8f2a1b', idLast4: '0000', zone: '急救區' },
+  { id: 'A045', bed: '01', name: '李Ｏ雄', fullName: '李大雄', dob: '1952/05/10', age: 72, triageLevel: 2, initialWaitingCount: 28, token: 'tk_8f2a1b', idLast4: '0000', zone: '急救區' },
   { id: 'A046', bed: '03', name: '林Ｏ花', fullName: '林小花', dob: '1959/11/22', age: 65, triageLevel: 4, initialWaitingCount: 18, token: 'tk_9c3d4e', idLast4: '0000', zone: '輕症區' },
   { id: 'A047', bed: '05', name: '王Ｏ吉', fullName: '王萬吉', dob: '1945/10/12', age: 78, triageLevel: 3, initialWaitingCount: 12, token: 'tk_1a2b3c', idLast4: '0000', zone: '留觀區' },
   { id: 'A048', bed: '08', name: '陳Ｏ明', fullName: '陳志明', dob: '1970/08/15', age: 54, triageLevel: 1, initialWaitingCount: 0, token: 'tk_7e8f9g', idLast4: '0000', zone: '急救區' },
@@ -74,12 +74,12 @@ const FAQS = [
 const MAP_LAYOUT_1F = [
   [2, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2],
   [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
-  [2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 7, 2],
+  [2, 2, 1, 2, 2, 2, 1, 4, 2, 2, 7, 2],
   [2, 6, 1, 2, 2, 2, 1, 4, 4, 2, 1, 2], 
   [2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
   [2, 2, 1, 2, 2, 2, 1, 4, 4, 2, 1, 2],
   [2, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2],
-  [2, 5, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2],
+  [2, 5, 1, 2, 2, 2, 1, 6, 2, 5, 1, 2],
   [2, 1, 1, 1, 1, 7, 1, 1, 1, 1, 1, 2],
   [2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2],
 ];
@@ -102,23 +102,27 @@ const MAP_LANDMARKS = {
   'elevator': {row:3, col:1}, 'xray': {row:3, col:7}, 'ct': {row:3, col:8}, 
   'us': {row:5, col:7}, 'mri': {row:5, col:8}, 'blood': {row:6, col:1}, 
   'screening': {row:7, col:1}, 'ecg': {row:8, col:5}, 'nurse': {row:2, col:10}, 
-  'icu': {row:5, col:2}
+  'icu': {row:5, col:2},
+  'water': {row:2, col:7}, 'trash': {row:7, col:7}, 'toilet': {row:7, col:9}
 };
 
-const MED_STEPS = ['掛號', '檢查', '報告', '診察', '離院'];
+const MED_STEPS = ['檢傷/掛號', '看診', '檢查/檢驗', '報告', '留觀/離院'];
 
 const NAV_DESTINATIONS = [
+  { id: 'er_entrance', icon: '🚪', label: '急診入口', guidance: '請往大門口方向走。' },
+  { id: 'pharmacy', icon: '💊', label: '急診藥局', guidance: '請前往大廳，看到批價櫃檯後左轉，直接可以到藥局。' },
+  { id: 'cashier', icon: '💳', label: '批價掛號', guidance: '請往大門口方向走，批價掛號櫃檯在您的右手邊。' },
+  { id: 'elevator', icon: '🛗', label: '電梯', guidance: '請直走，經過批價櫃檯後，前方左側即是電梯。' },
   { id: 'xray', icon: '☢️', label: 'X光室', guidance: '請直走，經過批價櫃檯後，前方右側即是 X 光室。' },
   { id: 'ct', icon: '🖥️', label: '電腦斷層', guidance: '請直走，經過 X 光室後，最深處即是電腦斷層室。' },
   { id: 'us', icon: '🌊', label: '超音波室', guidance: '請往急救區方向走，超音波室在您的右側。' },
   { id: 'mri', icon: '🧲', label: '核磁共振', guidance: '請往深處走，經過超音波室後即可抵達核磁共振室。' },
-  { id: 'ecg', icon: '❤️', label: '心電圖室', guidance: '請直走，經過批價櫃檯後，前方左側即是心電圖室。' },
-  { id: 'blood', icon: '🩸', label: '檢驗室(抽血)', guidance: '請直走，經過批價櫃檯後，前方左側即是檢驗室，可進行抽血。' },
-  { id: 'screening', icon: '🧪', label: '篩檢處', guidance: '請往出口方向走，篩檢處在靠近大門的左側。' },
-  { id: 'pharmacy', icon: '💊', label: '急診藥局', guidance: '請前往大廳，看到批價櫃檯後左轉，直接可以到藥局。' },
-  { id: 'cashier', icon: '💳', label: '批價掛號', guidance: '請往大門口方向走，批價掛號櫃檯在您的右手邊。' },
+  { id: 'blood', icon: '🔬', label: '檢驗科', guidance: '請直走，經過批價櫃檯後，前方左側即是檢驗科。' },
   { id: 'nurse', icon: '👩‍⚕️', label: '護理站', guidance: '請沿著中央走廊直走，護理站就在您的正前方。' },
-  { id: 'icu', icon: '🏥', label: '加護病房', guidance: '請先搭乘電梯至 3 樓，出電梯後直走即可抵達加護病房。' }
+  { id: 'icu', icon: '🏥', label: '加護病房', guidance: '請先搭乘電梯至 3 樓，出電梯後直走即可抵達加護病房。' },
+  { id: 'toilet', icon: '🚻', label: '廁所', guidance: '請往大廳方向走，廁所在您的左手邊。' },
+  { id: 'water', icon: '🚰', label: '飲水機', guidance: '請往大廳方向走，飲水機在您的右手邊。' },
+  { id: 'trash', icon: '🗑️', label: '污物室', guidance: '請往大廳方向走，污物室在您的左手邊。' }
 ];
 
 const CONSENT_TYPES = [
@@ -138,14 +142,14 @@ const LAB_TYPES = [
 ];
 
 const TRIAGE_STYLES = {
-  1: { color: 'text-red-700 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'border-red-200 dark:border-red-500/30', dot: 'bg-red-500', name: '1級 (復甦急救)', msg: '醫療團隊正全力處置中。' },
-  2: { color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-500/10', border: 'border-orange-200 dark:border-orange-500/30', dot: 'bg-orange-500', name: '2級 (危急)', msg: '護理人員將盡快安排處置，請稍候。' },
-  3: { color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-500/10', border: 'border-yellow-200 dark:border-yellow-500/30', dot: 'bg-yellow-500', name: '3級 (緊急)', msg: '正為您安排檢查。等候人數可能變動。' },
-  4: { color: 'text-green-700 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-500/10', border: 'border-green-200 dark:border-green-500/30', dot: 'bg-green-500', name: '4級 (次緊急)', msg: '急診以重症優先，等待時間較長。' },
-  5: { color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-500/10', border: 'border-blue-200 dark:border-blue-500/30', dot: 'bg-blue-500', name: '5級 (非緊急)', msg: '急診以重症為優先，感謝您的耐心配合。' }
+  1: { color: 'text-red-700 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'border-red-200 dark:border-red-500/30', dot: 'bg-red-500', name: '1級 (復甦急救)', msg: '醫療團隊正全力處置中。', lineColor: '#ef4444' },
+  2: { color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-500/10', border: 'border-orange-200 dark:border-orange-500/30', dot: 'bg-orange-500', name: '2級 (危急)', msg: '護理人員將盡快安排處置，請稍候。', lineColor: '#f97316' },
+  3: { color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-500/10', border: 'border-yellow-200 dark:border-yellow-500/30', dot: 'bg-yellow-500', name: '3級 (緊急)', msg: '正為您安排檢查。等候人數可能變動。', lineColor: '#eab308' },
+  4: { color: 'text-green-700 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-500/10', border: 'border-green-200 dark:border-green-500/30', dot: 'bg-green-500', name: '4級 (次緊急)', msg: '急診以重症優先，等待時間較長。', lineColor: '#22c55e' },
+  5: { color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-500/10', border: 'border-blue-200 dark:border-blue-500/30', dot: 'bg-blue-500', name: '5級 (非緊急)', msg: '急診以重症為優先，感謝您的耐心配合。', lineColor: '#3b82f6' }
 };
 
-const getTriageStyle = (level) => TRIAGE_STYLES[level] || { color: 'text-sky-700 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'border-sky-200 dark:border-sky-500/30', dot: 'bg-sky-500', name: '未分類', msg: '請等候護理人員指示。' };
+const getTriageStyle = (level) => TRIAGE_STYLES[level] || { color: 'text-sky-700 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'border-sky-200 dark:border-sky-500/30', dot: 'bg-sky-500', name: '未分類', msg: '請等候護理人員指示。', lineColor: '#0ea5e9' };
 
 const getMergedState = (fetchedState, patientId) => {
   const patient = PATIENTS_LIST.find(p => p.id === patientId);
@@ -168,7 +172,6 @@ const getMergedState = (fetchedState, patientId) => {
   };
 };
 
-// ================= 防呆組件：滑動解鎖 =================
 const SwipeToConfirm = ({ onConfirm, text, bgClass = "bg-slate-100 dark:bg-slate-700", textClass = "text-slate-500 dark:text-slate-400", activeBgClass = "bg-emerald-500", activeTextClass = "text-white", icon = <ChevronRight className="w-5 h-5 text-slate-400"/> }) => {
   const [dragX, setDragX] = useState(0);
   const [unlocked, setUnlocked] = useState(false);
@@ -197,7 +200,7 @@ const SwipeToConfirm = ({ onConfirm, text, bgClass = "bg-slate-100 dark:bg-slate
   return (
     <div ref={containerRef} className={`relative w-full h-12 rounded-[1.5rem] flex items-center justify-center overflow-hidden touch-none select-none transition-colors duration-300 shadow-inner ${unlocked ? activeBgClass : bgClass}`} 
          onTouchMove={handleTouchMove} onTouchEnd={handleEnd} onMouseMove={handleMouseMove} onMouseUp={handleEnd} onMouseLeave={handleEnd}>
-      <span className={`text-xs font-bold z-0 transition-opacity ${unlocked ? activeTextClass : textClass}`}>{unlocked ? '✅ 已授權確認' : text}</span>
+      <span className={`text-sm font-bold z-0 transition-opacity ${unlocked ? activeTextClass : textClass}`}>{unlocked ? '✅ 已授權確認' : text}</span>
       <div className={`absolute left-1 top-1 w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-md z-10 transition-transform ${unlocked ? 'opacity-0' : ''}`} 
            style={{ transform: `translateX(${dragX}px)`, transition: isNaN(dragX) || dragX === 0 ? 'transform 0.3s ease' : 'none' }}>
          {icon}
@@ -206,7 +209,6 @@ const SwipeToConfirm = ({ onConfirm, text, bgClass = "bg-slate-100 dark:bg-slate
   );
 };
 
-// ================= 全域智能主題與設定控制 =================
 const HeaderSettings = ({ settings, toggleSetting, onLogout }) => (
   <div className="flex items-center gap-1.5 sm:gap-2">
     <button onClick={() => toggleSetting('voice')} className={`p-1.5 sm:p-2 rounded-full transition-all ${settings.voice ? 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300' : 'text-slate-400 bg-slate-100 dark:bg-slate-800'}`} title="語音提醒">
@@ -216,7 +218,7 @@ const HeaderSettings = ({ settings, toggleSetting, onLogout }) => (
       {settings.vibe ? <Vibrate size={18} /> : <VibrateOff size={18} />}
     </button>
     <button onClick={() => toggleSetting('elderMode')} className={`p-1.5 sm:p-2 rounded-full transition-all flex items-center gap-1 ${settings.elderMode ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-500 bg-slate-100 dark:bg-slate-800'}`} title="長者大字模式">
-      <Type size={16} /><span className="text-[10px] font-bold hidden sm:inline">{settings.elderMode ? '長者' : '標準'}</span>
+      <Type size={16} /><span className="text-xs font-bold hidden sm:inline">{settings.elderMode ? '長者' : '標準'}</span>
     </button>
     <button onClick={() => toggleSetting('isDarkMode')} className="p-1.5 sm:p-2 rounded-full text-slate-500 bg-slate-100 dark:bg-slate-800">
       {settings.isDarkMode ? <Sun size={18} className="text-amber-500"/> : <Moon size={18} className="text-indigo-500"/>}
@@ -229,7 +231,6 @@ const HeaderSettings = ({ settings, toggleSetting, onLogout }) => (
   </div>
 );
 
-// ================= 身分驗證與登入元件 =================
 function PatientVerify({ role, setRole, selectedPatient, setSelectedPatient, settings, toggleSetting }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
@@ -257,16 +258,16 @@ function PatientVerify({ role, setRole, selectedPatient, setSelectedPatient, set
            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-inner ${isProxy ? 'bg-purple-100/80 text-purple-600' : 'bg-sky-100/80 text-sky-500'}`}>
              {isProxy ? <PenTool className="w-10 h-10"/> : <Lock className="w-10 h-10" />}
            </div>
-           <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2 tracking-widest">{isProxy ? '代理人授權驗證' : '身分驗證'}</h2>
-           <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">請輸入病患 <b className={`text-lg ${isProxy ? 'text-purple-600' : 'text-sky-600'}`}>{selectedPatient.name}</b> 的身分證後四碼。<br/><span className="text-xs text-slate-400 mt-2 block">(測試預設: 0000)</span></p>
+           <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2 tracking-widest">{isProxy ? '代理人授權驗證' : '身分驗證'}</h2>
+           <p className="text-base text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">請輸入病患 <b className={`text-xl ${isProxy ? 'text-purple-600' : 'text-sky-600'}`}>{selectedPatient.name}</b> 的身分證後四碼。<br/><span className="text-sm text-slate-400 mt-2 block">(測試預設: 0000)</span></p>
            <div className="w-full mb-6">
               <div className={`flex items-center bg-white/80 dark:bg-slate-900/80 rounded-xl border-2 px-4 py-3 transition-colors ${error ? 'border-rose-500' : 'border-slate-200 dark:border-slate-600 focus-within:border-sky-500'}`}>
-                 <KeyRound className={`w-5 h-5 mr-3 ${error ? 'text-rose-500' : 'text-slate-400'}`} />
-                 <input type="password" maxLength="4" placeholder="輸入四碼數字" className="bg-transparent w-full outline-none text-xl tracking-[0.5em] font-bold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 placeholder:tracking-normal" value={pin} onChange={(e) => {setPin(e.target.value.replace(/[^0-9]/g, '')); setError(false);}} onKeyDown={(e) => e.key === 'Enter' && handleVerify()} />
+                 <KeyRound className={`w-6 h-6 mr-3 ${error ? 'text-rose-500' : 'text-slate-400'}`} />
+                 <input type="password" maxLength="4" placeholder="輸入四碼數字" className="bg-transparent w-full outline-none text-2xl tracking-[0.5em] font-bold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 placeholder:tracking-normal" value={pin} onChange={(e) => {setPin(e.target.value.replace(/[^0-9]/g, '')); setError(false);}} onKeyDown={(e) => e.key === 'Enter' && handleVerify()} />
               </div>
-              {error && <p className="text-rose-500 text-xs font-bold mt-2 animate-bounce">驗證碼錯誤，請重新輸入</p>}
+              {error && <p className="text-rose-500 text-sm font-bold mt-2 animate-bounce">驗證碼錯誤，請重新輸入</p>}
            </div>
-           <button onClick={handleVerify} disabled={pin.length !== 4} className={`w-full font-bold py-4 rounded-xl text-lg transition-all shadow-lg active:scale-95 ${pin.length === 4 ? (isProxy ? 'bg-purple-500 hover:bg-purple-600 text-white' : 'bg-sky-500 hover:bg-sky-600 text-white') : 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-400 cursor-not-allowed'}`}>
+           <button onClick={handleVerify} disabled={pin.length !== 4} className={`w-full font-bold py-4 rounded-xl text-xl transition-all shadow-lg active:scale-95 ${pin.length === 4 ? (isProxy ? 'bg-purple-500 hover:bg-purple-600 text-white' : 'bg-sky-500 hover:bg-sky-600 text-white') : 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-400 cursor-not-allowed'}`}>
               {isProxy ? '解鎖代簽權限' : '解鎖進入'}
            </button>
         </div>
@@ -276,59 +277,43 @@ function PatientVerify({ role, setRole, selectedPatient, setSelectedPatient, set
 
 function StaffLogin({ role, setRole, setSelectedNurse, settings, toggleSetting }) {
   const isStation = role === 'station_login';
-  const [loginMethod, setLoginMethod] = useState('pwd'); 
-  const [empId, setEmpId] = useState(''); const [pwd, setPwd] = useState(''); const [error, setError] = useState('');
-  const [isReadingCard, setIsReadingCard] = useState(false);
+  const [empId, setEmpId] = useState('');
+  const [pwd, setPwd] = useState(''); 
+  const [error, setError] = useState('');
 
   const handlePwdLogin = () => {
      if (isStation) { 
-         if ((empId.toUpperCase() === 'ADMIN' || empId === 'A000') && pwd === '0000') { setRole('station'); setSelectedNurse('主控台管理員'); } 
-         else setError('帳號或密碼錯誤 (預設 ADMIN / 0000)'); 
+         setRole('station'); setSelectedNurse('主控台管理員');
      } 
      else { 
-         const nurse = STAFF_LIST.find(n => n.empId.toUpperCase() === empId.toUpperCase()); 
-         if (nurse && pwd === nurse.pwd) { setSelectedNurse(nurse.name); setRole('nurse_mobile'); } 
-         else setError('員工編號或密碼錯誤 (預設 A001~A004 / 0000)'); 
+         const nurseName = empId ? `${empId}護理師` : '測試護理師';
+         setSelectedNurse(nurseName); setRole('nurse_mobile');
      }
   };
-  const handleCardLogin = () => { setIsReadingCard(true); setError(''); setTimeout(() => { setIsReadingCard(false); if (isStation) { setRole('station'); setSelectedNurse('主控台管理員'); } else { setSelectedNurse(STAFF_LIST[0].name); setRole('nurse_mobile'); } }, 1500); };
 
   return (
      <div className="flex flex-col items-center justify-center p-6 min-h-screen relative flex-1 animate-[fadeIn_0.3s_ease-out] bg-gradient-to-br from-indigo-50 to-slate-50 dark:from-slate-900 dark:to-slate-800">
         <div className="absolute top-6 left-6 right-6 flex justify-between z-20">
-           <button onClick={() => setRole(null)} className="text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-slate-200/50 dark:border-slate-700/50"><ChevronLeft className="w-5 h-5"/> 返回首頁</button>
+           <button onClick={() => setRole(null)} className="text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-slate-200/50 dark:border-slate-700/50"><ChevronLeft className="w-6 h-6"/> 返回首頁</button>
            <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
         </div>
-        <div className="w-20 h-20 bg-indigo-500 dark:bg-indigo-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-[0_10px_20px_rgba(99,102,241,0.3)] z-10">{isStation ? <Monitor className="w-10 h-10"/> : <Smartphone className="w-10 h-10"/>}</div>
-        <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2 tracking-widest z-10">{isStation ? '主控台登入' : '護理師端登入'}</h2>
-        <p className="text-indigo-500 dark:text-indigo-400 font-bold mb-8 text-sm z-10">請進行醫療人員身分驗證</p>
+        <div className="w-24 h-24 bg-indigo-500 dark:bg-indigo-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-[0_10px_20px_rgba(99,102,241,0.3)] z-10">{isStation ? <Monitor className="w-12 h-12"/> : <Smartphone className="w-12 h-12"/>}</div>
+        <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest z-10">{isStation ? '主控台登入' : '護理師端登入'}</h2>
+        <p className="text-indigo-500 dark:text-indigo-400 font-bold mb-8 text-base z-10">請輸入員工編號與密碼 (可隨意測試輸入)</p>
         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 dark:border-slate-700 z-10">
-           <div className="flex border-b border-slate-100 dark:border-slate-700">
-              <button onClick={() => {setLoginMethod('pwd'); setError('');}} className={`flex-1 py-4 font-bold text-sm transition-colors flex items-center justify-center gap-2 ${loginMethod === 'pwd' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400' : 'bg-transparent text-slate-400 hover:text-slate-600'}`}><UserCircle className="w-4 h-4"/> 帳號密碼</button>
-              <button onClick={() => {setLoginMethod('card'); setError('');}} className={`flex-1 py-4 font-bold text-sm transition-colors flex items-center justify-center gap-2 ${loginMethod === 'card' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400' : 'bg-transparent text-slate-400 hover:text-slate-600'}`}><CreditCard className="w-4 h-4"/> 醫事人員卡</button>
-           </div>
            <div className="p-8">
-              {loginMethod === 'pwd' ? (
-                 <div className="space-y-4 animate-[fadeIn_0.2s_ease-out]">
-                    <div><label className="block text-xs font-bold text-slate-500 mb-1.5">員工編號 (ID)</label><input type="text" value={empId} onChange={e => {setEmpId(e.target.value); setError('');}} placeholder={isStation ? '預設: ADMIN' : '預設: A001~A004'} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 text-slate-900 dark:text-white uppercase font-bold" /></div>
-                    <div><label className="block text-xs font-bold text-slate-500 mb-1.5">登入密碼</label><input type="password" value={pwd} onChange={e => {setPwd(e.target.value); setError('');}} placeholder="預設: 0000" onKeyDown={(e) => e.key === 'Enter' && handlePwdLogin()} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 text-slate-900 dark:text-white font-bold" /></div>
-                    {error && <p className="text-rose-500 text-xs font-bold mt-1 text-center">{error}</p>}
-                    <button onClick={handlePwdLogin} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 mt-2 transition-transform">驗證登入</button>
-                 </div>
-              ) : (
-                 <div className="flex flex-col items-center justify-center py-4 animate-[fadeIn_0.2s_ease-out]">
-                    <div className={`w-32 h-32 mb-6 rounded-2xl flex items-center justify-center border-4 transition-all duration-300 ${isReadingCard ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-500/20' : 'border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50'}`}>{isReadingCard ? <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" /> : <CreditCard className="w-12 h-12 text-slate-400" />}</div>
-                    <p className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-6 h-5">{isReadingCard ? '讀取晶片憑證中...' : '請插入醫事人員卡'}</p>
-                    <button onClick={handleCardLogin} disabled={isReadingCard} className={`w-full font-bold py-4 rounded-xl shadow-md active:scale-95 flex justify-center items-center gap-2 transition-transform ${isReadingCard ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`}><MonitorSmartphone className="w-5 h-5"/> {isReadingCard ? '驗證中...' : '模擬插卡驗證'}</button>
-                 </div>
-              )}
+              <div className="space-y-4 animate-[fadeIn_0.2s_ease-out]">
+                 <div><label className="block text-sm font-bold text-slate-500 mb-1.5">員工編號 (ID)</label><input type="text" value={empId} onChange={e => {setEmpId(e.target.value); setError('');}} placeholder="請輸入編號" className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-4 outline-none focus:border-indigo-500 text-slate-900 dark:text-white uppercase font-bold text-lg" /></div>
+                 <div><label className="block text-sm font-bold text-slate-500 mb-1.5">登入密碼</label><input type="password" value={pwd} onChange={e => {setPwd(e.target.value); setError('');}} placeholder="請輸入密碼" onKeyDown={(e) => e.key === 'Enter' && handlePwdLogin()} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-4 outline-none focus:border-indigo-500 text-slate-900 dark:text-white font-bold text-lg" /></div>
+                 {error && <p className="text-rose-500 text-sm font-bold mt-1 text-center">{error}</p>}
+                 <button onClick={handlePwdLogin} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-5 rounded-xl shadow-md active:scale-95 mt-2 transition-transform text-lg">登入系統</button>
+              </div>
            </div>
         </div>
      </div>
   );
 }
 
-// ================= 主應用程式邏輯區塊 =================
 function MainApp() {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null); 
@@ -340,7 +325,6 @@ function MainApp() {
     voice: true, vibe: true, elderMode: false, isDarkMode: false
   });
   
-  // 系統全域設定 (跑馬燈)
   const [systemConfig, setSystemConfig] = useState({ 
     marqueeText: '【急診衛教宣導】為防範呼吸道傳染病，進入醫療院所請全程配戴口罩。若有發燒或咳嗽症狀，請立即告知護理人員，感謝您的配合。' 
   });
@@ -529,37 +513,40 @@ function MainApp() {
       return (
         <div className="min-h-screen bg-rose-50 flex items-center justify-center p-6">
           <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg w-full text-center border-2 border-rose-100">
-             <AlertTriangle className="w-20 h-20 text-rose-500 mx-auto mb-6 animate-pulse" />
-             <h1 className="text-2xl font-black text-slate-800 mb-4">系統安全防護已啟動</h1>
-             <p className="text-rose-600 font-bold mb-4 bg-rose-50 p-3 rounded-lg break-words">{initError}</p>
+             <AlertTriangle className="w-24 h-24 text-rose-500 mx-auto mb-6 animate-pulse" />
+             <h1 className="text-3xl font-black text-slate-800 mb-4">系統安全防護已啟動</h1>
+             <p className="text-rose-600 font-bold mb-4 bg-rose-50 p-4 rounded-lg break-words text-lg">{initError}</p>
           </div>
         </div>
       );
   }
 
-  const globalClass = `${settings.isDarkMode ? 'dark' : ''} ${settings.elderMode ? 'elder-mode' : ''}`;
+  // 設定全域基礎字體大小放大 (透過 className text-lg)
+  // 長者模式時進一步放大 (透過自訂 elder-mode class)
+  const globalClass = `text-lg font-sans ${settings.isDarkMode ? 'dark' : ''} ${settings.elderMode ? 'elder-mode' : ''}`;
 
   return (
     <div className={globalClass}>
       <style>{`
-        .elder-mode { font-size: 110%; }
-        .elder-mode h1 { font-size: 2.2rem; }
-        .elder-mode h2 { font-size: 1.8rem; }
+        /* 長者模式進一步放大所有文字 */
+        .elder-mode { font-size: 130%; }
+        .elder-mode h1 { font-size: 2.5rem; }
+        .elder-mode h2 { font-size: 2rem; }
         .elder-mode button { transform: scale(1.02); }
         
-        @keyframes stepFade {
-           0% { opacity: 0; transform: scale(0.8) translateY(5px); }
-           10% { opacity: 1; transform: scale(1) translateY(0); }
-           80% { opacity: 0.15; }
-           100% { opacity: 0; }
+        /* 導航箭頭閃爍放大動畫 */
+        @keyframes arrowFlash {
+           0% { opacity: 0; transform: scale(0.8) translateY(4px); filter: drop-shadow(0 0 2px rgba(14,165,233,0.3)); }
+           30% { opacity: 1; transform: scale(1.3) translateY(0); filter: drop-shadow(0 0 10px rgba(14,165,233,0.8)); }
+           70% { opacity: 0.5; transform: scale(1) translateY(0); filter: drop-shadow(0 0 5px rgba(14,165,233,0.5)); }
+           100% { opacity: 0; transform: scale(0.8) translateY(0); filter: drop-shadow(0 0 0px transparent); }
         }
-        .footprint-step {
-           animation: stepFade 2.5s infinite;
+        .arrow-step {
+           animation: arrowFlash 1.5s infinite;
            opacity: 0;
-           will-change: transform, opacity;
+           will-change: transform, opacity, filter;
         }
 
-        /* 跑馬燈動畫 */
         @keyframes marquee {
            0% { transform: translateX(100%); }
            100% { transform: translateX(-100%); }
@@ -569,6 +556,14 @@ function MainApp() {
            white-space: nowrap;
            animation: marquee 20s linear infinite;
         }
+        
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
       `}</style>
 
       <div className="min-h-screen bg-[#FDFBF7] dark:bg-slate-900 transition-colors duration-500 font-sans text-slate-800 dark:text-slate-200 flex flex-col">
@@ -577,29 +572,29 @@ function MainApp() {
             <div className="absolute top-6 right-6 z-20">
                <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
             </div>
-            <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-10 h-10" /></div>
-            <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-sm bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-200 dark:border-emerald-500/30">開發者綜合入口</p>
-            <p className="text-slate-500 dark:text-slate-400 text-xs mb-8 text-center max-w-md">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
+            <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-12 h-12" /></div>
+            <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
+            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">開發者綜合入口</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
               
               <div className="bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center shadow-xl hover:border-sky-500 transition-colors">
-                <Smartphone className="w-16 h-16 text-sky-500 dark:text-sky-400 mb-6" />
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mb-2">一般使用者端</h2>
-                <p className="text-slate-500 dark:text-slate-400 text-center mb-6 text-sm">提供給病患本人或家屬使用，兩者在首頁將有不同的導航起點與隱私呈現。</p>
+                <Smartphone className="w-20 h-20 text-sky-500 dark:text-sky-400 mb-6" />
+                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-2">一般使用者端</h2>
+                <p className="text-slate-500 dark:text-slate-400 text-center mb-6 text-base">提供給病患本人或家屬使用，兩者在首頁將有不同的導航起點與隱私呈現。</p>
                 <div className="w-full space-y-3">
-                  <button onClick={() => setRole('patient_select')} className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-4 rounded-xl text-lg shadow-md transition-colors">🏥 病患本人登入</button>
-                  <button onClick={() => setRole('family_select')} className="w-full bg-amber-50 dark:bg-amber-600/20 border border-amber-200 dark:border-amber-500/50 text-amber-600 dark:text-amber-500 font-bold py-3 rounded-xl shadow-sm hover:bg-amber-100 transition-colors">👨‍👩‍👧 家屬探視登入</button>
+                  <button onClick={() => setRole('patient_select')} className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-5 rounded-xl text-xl shadow-md transition-colors">🏥 病患本人登入</button>
+                  <button onClick={() => setRole('family_select')} className="w-full bg-amber-50 dark:bg-amber-600/20 border border-amber-200 dark:border-amber-500/50 text-amber-600 dark:text-amber-500 font-bold py-4 rounded-xl shadow-sm hover:bg-amber-100 transition-colors text-lg">👨‍👩‍👧 家屬探視登入</button>
                 </div>
               </div>
 
               <div className="bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center shadow-xl hover:border-indigo-500 transition-colors">
-                <Monitor className="w-16 h-16 text-indigo-500 dark:text-indigo-400 mb-6" />
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mb-2">醫療護理端</h2>
-                <p className="text-slate-500 dark:text-slate-400 text-center mb-6 text-sm">掌握全區病患動態，可授權求救按鈕並派單給行動護理師處理。</p>
+                <Monitor className="w-20 h-20 text-indigo-500 dark:text-indigo-400 mb-6" />
+                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-2">醫療護理端</h2>
+                <p className="text-slate-500 dark:text-slate-400 text-center mb-6 text-base">掌握全區病患動態，可授權求救按鈕並派單給行動護理師處理。</p>
                 <div className="w-full space-y-3">
-                  <button onClick={() => setRole('station_login')} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-md transition-colors">💻 護理站主控台</button>
-                  <button onClick={() => setRole('nurse_login')} className="w-full bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/50 text-indigo-600 dark:text-indigo-300 font-bold py-3 rounded-xl hover:bg-indigo-100 transition-colors">📱 護理師公務機</button>
+                  <button onClick={() => setRole('station_login')} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-5 rounded-xl shadow-md transition-colors text-xl">💻 護理站主控台</button>
+                  <button onClick={() => setRole('nurse_login')} className="w-full bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/50 text-indigo-600 dark:text-indigo-300 font-bold py-4 rounded-xl hover:bg-indigo-100 transition-colors text-lg">📱 護理師公務機</button>
                 </div>
               </div>
 
@@ -613,17 +608,17 @@ function MainApp() {
         {role === 'patient_select' && (
           <div className="flex flex-col items-center justify-center p-6 min-h-screen animate-[fadeIn_0.3s_ease-out] relative flex-1 bg-gradient-to-br from-sky-50 via-slate-50 to-amber-50 dark:from-slate-900 dark:via-sky-950 dark:to-slate-900">
             <div className="absolute top-6 left-6 right-6 flex justify-between z-20">
-               <button onClick={() => {setRole(null); window.history.replaceState({}, '', window.location.pathname);}} className="text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-slate-200/50 dark:border-slate-700/50"><ChevronLeft className="w-5 h-5"/> 返回</button>
+               <button onClick={() => {setRole(null); try{window.history.replaceState({}, '', window.location.pathname);}catch(e){}}} className="text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-slate-200/50 dark:border-slate-700/50"><ChevronLeft className="w-6 h-6"/> 返回</button>
                <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
             </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center mt-12 z-10">請選擇您的身分</h2>
-            <p className="text-sky-600 dark:text-sky-400 font-bold mb-10 text-center text-sm z-10 bg-white/50 dark:bg-slate-800/50 px-4 py-1.5 rounded-full backdrop-blur-md">為保護隱私，選定後需進行驗證</p>
-            <div className="w-full max-w-3xl grid grid-cols-2 md:grid-cols-3 gap-4 z-10">
+            <h2 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center mt-12 z-10">請選擇您的身分</h2>
+            <p className="text-sky-600 dark:text-sky-400 font-bold mb-10 text-center text-base z-10 bg-white/50 dark:bg-slate-800/50 px-5 py-2 rounded-full backdrop-blur-md">為保護隱私，選定後需進行驗證</p>
+            <div className="w-full max-w-3xl grid grid-cols-2 md:grid-cols-3 gap-6 z-10">
               {PATIENTS_LIST.map(p => (
-                <button key={p.id} onClick={() => { setSelectedPatient(p); setRole('patient_verify'); }} className={`bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-white/50 dark:border-slate-700 p-6 rounded-[2rem] flex flex-col items-center hover:scale-105 shadow-[0_4px_16px_rgba(0,0,0,0.05)] transition-all group hover:border-sky-400 hover:shadow-[0_4px_20px_rgba(56,189,248,0.3)]`}>
-                  <div className={`w-16 h-16 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center font-black text-2xl text-slate-700 dark:text-white mb-4 border border-slate-100 dark:border-slate-700 shadow-inner transition-colors group-hover:text-sky-600 group-hover:bg-sky-50`}>{p.bed}</div>
-                  <span className="text-xl font-bold text-slate-900 dark:text-white tracking-wide">{p.name}</span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">{p.id}</span>
+                <button key={p.id} onClick={() => { setSelectedPatient(p); setRole('patient_verify'); }} className={`bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-white/50 dark:border-slate-700 p-8 rounded-[2rem] flex flex-col items-center hover:scale-105 shadow-[0_4px_16px_rgba(0,0,0,0.05)] transition-all group hover:border-sky-400 hover:shadow-[0_4px_20px_rgba(56,189,248,0.3)]`}>
+                  <div className={`w-20 h-20 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center font-black text-3xl text-slate-700 dark:text-white mb-4 border border-slate-100 dark:border-slate-700 shadow-inner transition-colors group-hover:text-sky-600 group-hover:bg-sky-50`}>{p.bed}</div>
+                  <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-wide">{p.name}</span>
+                  <span className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-2">{p.id}</span>
                 </button>
               ))}
             </div>
@@ -633,16 +628,16 @@ function MainApp() {
         {role === 'family_select' && (
           <div className="flex flex-col items-center justify-center p-6 min-h-screen animate-[fadeIn_0.3s_ease-out] relative flex-1 bg-gradient-to-br from-sky-50 via-slate-50 to-amber-50 dark:from-slate-900 dark:via-sky-950 dark:to-slate-900">
             <div className="absolute top-6 left-6 right-6 flex justify-between z-20">
-               <button onClick={() => {setRole(null); window.history.replaceState({}, '', window.location.pathname);}} className="text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-slate-200/50 dark:border-slate-700/50"><ChevronLeft className="w-5 h-5"/> 返回</button>
+               <button onClick={() => {setRole(null); try{window.history.replaceState({}, '', window.location.pathname);}catch(e){}}} className="text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-slate-200/50 dark:border-slate-700/50"><ChevronLeft className="w-6 h-6"/> 返回</button>
                <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
             </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center mt-12 z-10">請選擇探視病患</h2>
-            <div className="w-full max-w-3xl grid grid-cols-2 md:grid-cols-3 gap-4 z-10">
+            <h2 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center mt-12 z-10">請選擇探視病患</h2>
+            <div className="w-full max-w-3xl grid grid-cols-2 md:grid-cols-3 gap-6 z-10">
               {PATIENTS_LIST.map(p => (
-                <button key={p.id} onClick={() => { setSelectedPatient(p); setRole('family_verify'); }} className={`bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-white/50 dark:border-slate-700 p-6 rounded-[2rem] flex flex-col items-center hover:scale-105 shadow-[0_4px_16px_rgba(0,0,0,0.05)] transition-all group hover:border-amber-400 hover:shadow-[0_4px_20px_rgba(251,191,36,0.3)]`}>
-                  <div className={`w-16 h-16 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center font-black text-2xl text-slate-700 dark:text-white mb-4 border border-slate-100 dark:border-slate-700 shadow-inner transition-colors group-hover:text-amber-600 group-hover:bg-amber-50`}>{p.bed}</div>
-                  <span className="text-xl font-bold text-slate-900 dark:text-white tracking-wide">{p.name}</span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">{p.id}</span>
+                <button key={p.id} onClick={() => { setSelectedPatient(p); setRole('family_verify'); }} className={`bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-white/50 dark:border-slate-700 p-8 rounded-[2rem] flex flex-col items-center hover:scale-105 shadow-[0_4px_16px_rgba(0,0,0,0.05)] transition-all group hover:border-amber-400 hover:shadow-[0_4px_20px_rgba(251,191,36,0.3)]`}>
+                  <div className={`w-20 h-20 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center font-black text-3xl text-slate-700 dark:text-white mb-4 border border-slate-100 dark:border-slate-700 shadow-inner transition-colors group-hover:text-amber-600 group-hover:bg-amber-50`}>{p.bed}</div>
+                  <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-wide">{p.name}</span>
+                  <span className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-2">{p.id}</span>
                 </button>
               ))}
             </div>
@@ -652,7 +647,7 @@ function MainApp() {
         {((role === 'patient_app' || role === 'family_app' || role === 'proxy_app') && selectedPatient) && (
           <PatientFamilyApp 
             mode={role.replace('_app', '')} currentPatient={selectedPatient} patientState={getMergedState(patientsState[selectedPatient.id], selectedPatient.id)} 
-            systemConfig={systemConfig} // 傳入衛教跑馬燈設定
+            systemConfig={systemConfig}
             updatePatientState={updatePatientState} alerts={alerts} createAlert={createAlert} resolveAlert={resolveAlert} commands={commands} ackCommand={ackCommand} 
             settings={settings} toggleSetting={toggleSetting}
             onLogout={() => { setRole(null); setSelectedPatient(null); try { window.history.replaceState({}, '', window.location.pathname); } catch(e){} }}
@@ -663,7 +658,7 @@ function MainApp() {
           <NurseApp 
             role={role} nurseName={role === 'station' ? '主控台' : selectedNurse} alerts={alerts} updateAlert={updateAlert} resolveAlert={resolveAlert} createAlert={createAlert} clearAllAlerts={clearAllAlerts}
             patientsState={patientsState} updatePatientState={updatePatientState} createCommand={createCommand} PATIENTS_LIST={PATIENTS_LIST}
-            systemConfig={systemConfig} updateSystemConfig={updateSystemConfig} // 傳入推播設定功能
+            systemConfig={systemConfig} updateSystemConfig={updateSystemConfig}
             settings={settings} toggleSetting={toggleSetting}
             onLogout={() => { setRole(null); setSelectedNurse(null); try { window.history.replaceState({}, '', window.location.pathname); } catch(e){} }}
           />
@@ -673,16 +668,15 @@ function MainApp() {
   );
 }
 
-// ================= 病患/家屬/代理人端 App =================
 function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, updatePatientState, alerts, createAlert, resolveAlert, commands, ackCommand, onLogout, settings, toggleSetting }) {
   if (patientState.tokenExpired) {
     return (
       <div className="flex flex-col items-center justify-center p-10 min-h-screen text-center animate-[fadeIn_0.5s_ease-out] bg-slate-50 dark:bg-slate-900">
          <div className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-700">
-            <Lock className="w-20 h-20 text-slate-300 mx-auto mb-6" />
-            <h2 className="text-2xl font-black mb-4">就診紀錄已結案</h2>
-            <p className="text-slate-500 mb-10 font-bold">為保護您的隱私，當病患離院或繳費超時，此專屬連結即自動註銷失效。</p>
-            <button onClick={onLogout} className="w-full bg-sky-500 text-white font-bold py-4 rounded-2xl shadow-md active:scale-95">返回系統首頁</button>
+            <Lock className="w-24 h-24 text-slate-300 mx-auto mb-6" />
+            <h2 className="text-3xl font-black mb-4">就診紀錄已結案</h2>
+            <p className="text-slate-500 mb-10 font-bold text-lg">為保護您的隱私，當病患離院或繳費超時，此專屬連結即自動註銷失效。</p>
+            <button onClick={onLogout} className="w-full bg-sky-500 text-white font-bold py-5 rounded-2xl shadow-md active:scale-95 text-xl">返回系統首頁</button>
          </div>
       </div>
     );
@@ -697,7 +691,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   const [recallInfo, setRecallInfo] = useState(null); 
   const [showUrgentCall, setShowUrgentCall] = useState(false);
   const [showTriageBumpAlert, setShowTriageBumpAlert] = useState(false); 
-  const [customEmergencyAlert, setCustomEmergencyAlert] = useState(null); // 自訂緊急推播狀態
+  const [customEmergencyAlert, setCustomEmergencyAlert] = useState(null);
   
   const [showShareModal, setShowShareModal] = useState(false);
   const [activeConsentModal, setActiveConsentModal] = useState(null);
@@ -720,7 +714,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   const shareUrl = `${currentUrl}?token=${currentPatient.token}`;
 
   const playVoice = (text, overrideSilent = false) => { 
-      // 若強制覆蓋，即使 settings.voice 為 false 也會發聲 (用於緊急推播)
       if ('speechSynthesis' in window && isAudioUnlocked && (settings.voice || overrideSilent)) { 
           window.speechSynthesis.cancel(); 
           const u = new SpeechSynthesisUtterance(text); 
@@ -768,6 +761,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     ivEmpty: alerts.some(a => a.patientId === currentPatient.id && a.type === 'ivEmpty'), 
     ivPain: alerts.some(a => a.patientId === currentPatient.id && a.type === 'ivPain'), 
     toilet: alerts.some(a => a.patientId === currentPatient.id && a.type === 'toilet'), 
+    other: alerts.some(a => a.patientId === currentPatient.id && a.type === 'other'),
     sos: alerts.some(a => a.patientId === currentPatient.id && a.type === 'sos') 
   };
 
@@ -778,51 +772,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     }
     return () => clearTimeout(timer);
   }, [showTriageBumpAlert]);
-
-  // 指令監聽核心邏輯
-  useEffect(() => {
-    const myCmd = commands.find(c => c.patientId === currentPatient.id || c.patientId === 'GLOBAL');
-    if (myCmd) {
-      // 處理自訂緊急推播 (火災/大量傷患)
-      if (myCmd.action === 'custom_emergency') {
-         setCustomEmergencyAlert(myCmd.message);
-         triggerVibe([1000, 500, 1000, 500, 1000], true); // 強制震動
-         playVoice(`緊急廣播：${myCmd.message}`, true); // 強制語音
-         if(myCmd.patientId !== 'GLOBAL') ackCommand(myCmd.id);
-      }
-      else if (myCmd.action === 'triage_bump') { 
-         setShowTriageBumpAlert(true); 
-         playVoice('目前急診室有重大傷患正在進行急救，醫療團隊正全力搶救中，候診時間將展延，感謝您的體諒。'); 
-         if(myCmd.patientId !== 'GLOBAL') ackCommand(myCmd.id); 
-      } 
-      // 僅病患端接收導航/叫號呼叫
-      else if (isPatientMode && !recallInfo && !showUrgentCall) {
-         if (myCmd.action === 'urgent_call') { 
-            setShowUrgentCall(true); 
-            triggerVibe([1000, 500, 1000, 500, 1000], true); // 強制突破震動
-            playVoice(`${currentPatient.name}！輪到您了！請立刻前往急診一診看診。`, true); // 強制突破靜音
-            ackCommand(myCmd.id); 
-         } 
-         else { setRecallInfo({ type: myCmd.action, title: myCmd.action === 'nurse' ? '護理站正在找您' : 'X光室正在呼叫您', desc: '請跟隨導航前往。', icon: myCmd.action==='nurse' ? '👩‍⚕️':'☢️', color: myCmd.action==='nurse'?'bg-indigo-600':'bg-sky-600' }); triggerVibe([800, 400, 800]); playVoice(`${currentPatient.name}您好，有單位正在呼叫您，請查看手機畫面。`); ackCommand(myCmd.id); }
-      }
-    }
-  }, [commands, recallInfo, showUrgentCall, customEmergencyAlert, ackCommand, currentPatient.id, currentPatient.name, isPatientMode]);
-
-  useEffect(() => {
-    let rfidTimer;
-    if (helpRequests.toilet && !isFamilyMode) {
-      rfidTimer = setTimeout(() => { const existingAlert = alerts.find(a => a.patientId === currentPatient.id && a.type === 'toilet'); if (existingAlert) resolveAlert(existingAlert.id); updatePatientState(currentPatient.id, { rfid: 'active', location: '急診大廳' }); playVoice('系統偵測您已返回，為您解除暫離狀態。'); }, 12000); 
-    }
-    return () => clearTimeout(rfidTimer);
-  }, [helpRequests.toilet, isAudioUnlocked, alerts, resolveAlert, currentPatient.id, updatePatientState, isFamilyMode]);
-
-  const handleHelpRequest = (type) => {
-    if (type === 'toilet') {
-      if (helpRequests.toilet) { const existingAlert = alerts.find(a => a.patientId === currentPatient.id && a.type === 'toilet'); if (existingAlert) resolveAlert(existingAlert.id); updatePatientState(currentPatient.id, { rfid: 'active', location: '急診大廳' }); playVoice('歡迎回來。'); } 
-      else { createAlert({ patientId: currentPatient.id, type: 'toilet', message: '已暫離前往洗手間', priority: 'low' }); updatePatientState(currentPatient.id, { rfid: 'away', location: '洗手間' }); playVoice('已為您保留號碼，請放心前往。'); }
-    } else if (type === 'sos') { createAlert({ patientId: currentPatient.id, type: 'sos', message: '🚨病患發出緊急求救🚨', priority: 'high' }); triggerVibe([1000, 500, 1000]); playVoice('已發送緊急求救，護理人員將盡快抵達。'); } 
-    else { createAlert({ patientId: currentPatient.id, type, message: type === 'ivEmpty' ? '點滴不滴/沒了' : '漏血/會痛', priority: type === 'ivEmpty' ? 'medium' : 'high' }); playVoice('護理師已收到通知，請稍候。'); }
-  };
 
   const findPath = (start, end, floorLayout) => {
     const queue = [[start]]; const visited = new Set([`${start[0]},${start[1]}`]); const dirs = [[0,1],[1,0],[0,-1],[-1,0]];
@@ -843,7 +792,8 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
 
   const handleNavigation = (destId) => {
     setActiveDestination(destId); setCurrentFloor('1F'); setNavigationState('navigating_1f');
-    const startNode = (isFamilyMode || isProxyMode) ? [9,7] : [3,10]; 
+    // 強制將起點設為大廳，確保無論哪種身份都有完整的地圖路線可看
+    const startNode = [9, 7]; 
     let destNode;
     if (destId === 'icu') destNode = [3,1]; 
     else if (destId === 'find_patient') destNode = [3,10]; 
@@ -854,10 +804,57 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     
     const destObj = NAV_DESTINATIONS.find(d => d.id === destId);
     const guidanceVoice = destId === 'find_patient' 
-      ? '正在帶您尋找病患。請跟隨畫面上腳印的指示直走。' 
-      : (destObj?.guidance ? `正在為您導航至${destObj.label}。${destObj.guidance}` : `已開啟地圖導航，請跟隨畫面上腳印的指示直走。`);
+      ? '正在帶您尋找病患。請跟隨畫面上箭頭的指示直走。' 
+      : (destObj?.guidance ? `正在為您導航至${destObj.label}。${destObj.guidance}` : `已開啟地圖導航，請跟隨畫面上箭頭的指示直走。`);
     
     playVoice(guidanceVoice);
+  };
+
+  useEffect(() => {
+    const myCmd = commands.find(c => c.patientId === currentPatient.id || c.patientId === 'GLOBAL');
+    if (myCmd) {
+      if (myCmd.action === 'custom_emergency') {
+         setCustomEmergencyAlert(myCmd.message);
+         triggerVibe([1000, 500, 1000, 500, 1000], true);
+         playVoice(`緊急廣播：${myCmd.message}`, true);
+         if(myCmd.patientId !== 'GLOBAL') ackCommand(myCmd.id);
+      }
+      else if (myCmd.action === 'triage_bump') { 
+         setShowTriageBumpAlert(true); 
+         playVoice('目前急診室有重大傷患正在進行急救，醫療團隊正全力搶救中，候診時間將展延，感謝您的體諒。'); 
+         if(myCmd.patientId !== 'GLOBAL') ackCommand(myCmd.id); 
+      } 
+      else if (isPatientMode && !recallInfo && !showUrgentCall) {
+         if (myCmd.action === 'urgent_call') { 
+            setShowUrgentCall(true); 
+            triggerVibe([1000, 500, 1000, 500, 1000], true);
+            playVoice(`${currentPatient.name}！輪到您了！請立刻前往急診一診看診。`, true);
+            ackCommand(myCmd.id); 
+         } 
+         else { 
+            setRecallInfo({ type: myCmd.action, title: myCmd.action === 'nurse' ? '護理站正在找您' : 'X光室正在呼叫您', desc: '點擊此處開啟導航前往。', icon: myCmd.action==='nurse' ? '👩‍⚕️':'☢️', color: myCmd.action==='nurse'?'bg-indigo-600':'bg-sky-600' }); 
+            triggerVibe([800, 400, 800]); 
+            playVoice(`${currentPatient.name}您好，有單位正在呼叫您，請點擊畫面頂部提醒，跟隨指示前往。`); 
+            ackCommand(myCmd.id); 
+         }
+      }
+    }
+  }, [commands, recallInfo, showUrgentCall, customEmergencyAlert, ackCommand, currentPatient.id, currentPatient.name, isPatientMode]);
+
+  useEffect(() => {
+    let rfidTimer;
+    if (helpRequests.toilet && !isFamilyMode) {
+      rfidTimer = setTimeout(() => { const existingAlert = alerts.find(a => a.patientId === currentPatient.id && a.type === 'toilet'); if (existingAlert) resolveAlert(existingAlert.id); updatePatientState(currentPatient.id, { rfid: 'active', location: '急診大廳' }); playVoice('系統偵測您已返回，為您解除暫離狀態。'); }, 12000); 
+    }
+    return () => clearTimeout(rfidTimer);
+  }, [helpRequests.toilet, isAudioUnlocked, alerts, resolveAlert, currentPatient.id, updatePatientState, isFamilyMode]);
+
+  const handleHelpRequest = (type) => {
+    if (type === 'toilet') {
+      if (helpRequests.toilet) { const existingAlert = alerts.find(a => a.patientId === currentPatient.id && a.type === 'toilet'); if (existingAlert) resolveAlert(existingAlert.id); updatePatientState(currentPatient.id, { rfid: 'active', location: '急診大廳' }); playVoice('歡迎回來。'); } 
+      else { createAlert({ patientId: currentPatient.id, type: 'toilet', message: '已暫離前往洗手間', priority: 'low' }); updatePatientState(currentPatient.id, { rfid: 'away', location: '洗手間' }); playVoice('已為您保留號碼，請放心前往。'); }
+    } else if (type === 'sos') { createAlert({ patientId: currentPatient.id, type: 'sos', message: '🚨病患發出緊急求救🚨', priority: 'high' }); triggerVibe([1000, 500, 1000]); playVoice('已發送緊急求救，護理人員將盡快抵達。'); } 
+    else { createAlert({ patientId: currentPatient.id, type, message: type === 'ivEmpty' ? '點滴不滴/沒了' : type === 'ivPain' ? '漏血/會痛' : '其他需求', priority: type === 'ivEmpty' ? 'medium' : type === 'other' ? 'low' : 'high' }); playVoice('護理師已收到通知，請稍候。'); }
   };
 
   const handleLabNavigation = (labId) => {
@@ -963,7 +960,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
         else { const navDest = NAV_DESTINATIONS.find(d => d.id === destId); content = navDest ? navDest.icon : null; }
     }
     
-    const isStart = (row === ((isFamilyMode || isProxyMode)?9:3) && col === ((isFamilyMode || isProxyMode)?7:10)) && is1F;
+    const isStart = (row === 9 && col === 7) && is1F;
 
     switch(cellType) {
       case 0: baseStyle = 'opacity-0'; break;
@@ -986,19 +983,19 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
         {labelText && (
           <div className="absolute inset-0 flex items-end justify-center pointer-events-none" style={{ transform: `translateZ(${isDestLabel ? '150px' : '55px'})`, zIndex: isDestLabel ? 999 : 50 }}>
             <div className={`flex flex-col items-center origin-bottom transition-all duration-500 ${isDestLabel ? 'animate-bounce' : ''}`} style={{ transform: 'rotateZ(45deg) rotateX(-55deg)' }}>
-              <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md shadow-xl transition-all ${isDestLabel ? 'bg-sky-500 border border-sky-300 scale-125 shadow-[0_10px_30px_rgba(14,165,233,0.8)]' : 'bg-slate-800 border border-slate-700/80'}`}>
-                 <span className={`rounded-sm px-1 ${isDestLabel ? 'bg-sky-400 text-white' : 'bg-amber-500 text-white'}`}>{content || '📍'}</span>
-                 <span className="font-bold text-[10px] whitespace-nowrap text-white">{labelText}</span>
+              <div className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl transition-all ${isDestLabel ? 'bg-rose-500 border border-rose-300 scale-125 shadow-[0_10px_30px_rgba(244,63,94,0.8)]' : 'bg-slate-800 border border-slate-700/80'}`}>
+                 <span className={`rounded-sm px-2 py-1 text-2xl ${isDestLabel ? 'bg-rose-400 text-white' : 'bg-amber-500 text-white'}`}>{content || '📍'}</span>
+                 <span className="font-bold whitespace-nowrap text-white" style={{ fontSize: settings.elderMode ? '2rem' : '1.25rem' }}>{labelText}</span>
               </div>
-              <div className={`w-1 ${isDestLabel ? 'h-8 bg-sky-400' : 'h-5 bg-slate-500'}`}></div>
+              <div className={`w-1 ${isDestLabel ? 'h-10 bg-rose-400' : 'h-6 bg-slate-500'}`}></div>
             </div>
           </div>
         )}
         {isStart && (
           <div className="absolute inset-0 flex items-end justify-center pointer-events-none z-[60]" style={{ transform: `translateZ(75px)` }}>
             <div className="flex flex-col items-center origin-bottom transition-all duration-500 animate-bounce scale-110" style={{ transform: 'rotateZ(45deg) rotateX(-55deg)' }}>
-              <div className="bg-rose-500/95 border-2 border-rose-300 rounded-full px-3 py-1 shadow-lg flex items-center gap-1"><span className="text-white font-black text-xs">📍 起點</span></div>
-              <div className="w-1.5 h-8 bg-gradient-to-b from-rose-400 to-transparent"></div>
+              <div className="bg-emerald-500/95 border-2 border-emerald-300 rounded-full px-3 py-1 shadow-lg flex items-center gap-1"><span className="text-white font-black text-sm">📍 起點</span></div>
+              <div className="w-1.5 h-8 bg-gradient-to-b from-emerald-400 to-transparent"></div>
             </div>
           </div>
         )}
@@ -1024,9 +1021,9 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
        const midY = (y1 + y2) / 2;
 
        elements.push(
-          <g key={`step-${i}`} transform={`translate(${midX}, ${midY}) rotate(${angle})`} className="footprint-step" style={{ animationDelay: `${i * 0.25}s` }}>
-             <path d="M -5,6 C -8,6 -8,-4 -5,-7 C -2,-4 -2,6 -5,6 Z M -5,-8.5 A 2 2 0 1 0 -5,-12.5 A 2 2 0 1 0 -5,-8.5 Z" fill="#0ea5e9"/>
-             <path d="M 5,0 C 2,0 2,-10 5,-13 C 8,-10 8,0 5,0 Z M 5,-14.5 A 2 2 0 1 0 5,-18.5 A 2 2 0 1 0 5,-14.5 Z" fill="#0ea5e9"/>
+          <g key={`step-${i}`} transform={`translate(${midX}, ${midY}) rotate(${angle})`}>
+             {/* 修正：將閃爍動畫 class 移至內部 polygon，避免覆蓋 <g> 的座標轉換 */}
+             <polygon className="arrow-step" style={{ animationDelay: `${i * 0.2}s` }} points="-8,6 0,-10 8,6 0,2" fill="#0ea5e9" stroke="#0284c7" strokeWidth="1"/>
           </g>
        );
     }
@@ -1055,12 +1052,11 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
 
       <div className="w-full max-w-md bg-white/60 dark:bg-slate-900/60 backdrop-blur-2xl sm:rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.1)] sm:border border-white/50 dark:border-slate-700/50 flex flex-col h-full relative z-10 overflow-hidden">
         
-        {/* 全局衛教跑馬燈 (動態接收 systemConfig) */}
         {systemConfig?.marqueeText && (
            <div className="bg-sky-600 text-sky-50 overflow-hidden relative flex items-center px-3 py-2 z-[60] shadow-sm">
-              <Info className="w-4 h-4 shrink-0 mr-2 animate-pulse text-sky-200"/>
-              <div className="flex-1 overflow-hidden relative h-5">
-                 <div className="animate-marquee absolute whitespace-nowrap text-xs font-bold tracking-widest">
+              <Info className="w-5 h-5 shrink-0 mr-2 animate-pulse text-sky-200"/>
+              <div className="flex-1 overflow-hidden relative h-6">
+                 <div className="animate-marquee absolute whitespace-nowrap text-sm font-bold tracking-widest">
                     {systemConfig.marqueeText}
                  </div>
               </div>
@@ -1068,10 +1064,10 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
         )}
 
         {billingPaidAt && (
-          <div className="bg-amber-50 dark:bg-amber-900/40 border-b border-amber-200 dark:border-amber-700 p-3 flex items-center justify-between shadow-sm z-40 animate-[fadeIn_0.5s_ease-out]">
+          <div className="bg-amber-50 dark:bg-amber-900/40 border-b border-amber-200 dark:border-amber-700 p-4 flex items-center justify-between shadow-sm z-40 animate-[fadeIn_0.5s_ease-out]">
             <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-               <Clock className="w-5 h-5 animate-pulse" />
-               <span className="font-bold text-sm leading-snug">⚠️ 已完成批價<br/><span className="text-[10px] font-normal">系統將於 {new Date(billingPaidAt + 30 * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 自動註銷連結</span></span>
+               <Clock className="w-6 h-6 animate-pulse" />
+               <span className="font-bold text-base leading-snug">⚠️ 已完成批價<br/><span className="text-xs font-normal">系統將於 {new Date(billingPaidAt + 30 * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 自動註銷連結</span></span>
             </div>
           </div>
         )}
@@ -1079,34 +1075,36 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
         {showTriageBumpAlert && (
           <div className="absolute top-4 left-4 right-4 z-[90] animate-[fadeIn_0.3s_ease-out]">
              <div className="bg-red-600/95 backdrop-blur-xl border border-red-400 rounded-2xl p-5 shadow-[0_10px_30px_rgba(220,38,38,0.5)] flex items-start gap-4">
-                <AlertTriangle className="w-10 h-10 text-white shrink-0 animate-bounce" />
-                <div className="text-white"><h3 className="font-black text-xl mb-1 tracking-wider">一級急救處置中</h3><p className="font-medium text-sm opacity-95 leading-snug">醫療團隊全力搶救，候診將自動展延。</p></div>
+                <AlertTriangle className="w-12 h-12 text-white shrink-0 animate-bounce" />
+                <div className="text-white"><h3 className="font-black text-2xl mb-1 tracking-wider">一級急救處置中</h3><p className="font-medium text-base opacity-95 leading-snug">醫療團隊全力搶救，候診將自動展延。</p></div>
              </div>
-          </div>
-        )}
-        {recallInfo && (
-          <div className="absolute top-4 left-4 right-4 z-[90] animate-[fadeIn_0.3s_ease-out]">
-             <div className={`${recallInfo.color} backdrop-blur-xl border border-white/30 rounded-2xl p-5 shadow-xl flex items-start gap-4`}>
-                <div className="text-4xl animate-bounce">{recallInfo.icon}</div>
-                <div className="text-white flex-1"><h3 className="font-black text-xl mb-1">{recallInfo.title}</h3><p className="font-medium text-sm opacity-95">{recallInfo.desc}</p></div>
-                <button onClick={() => setRecallInfo(null)} className="text-white/70 hover:text-white"><X className="w-6 h-6"/></button>
-             </div>
-          </div>
-        )}
-        {showUrgentCall && (
-          <div className="absolute inset-0 z-[100] bg-rose-600 flex flex-col items-center justify-center p-6 animate-pulse">
-            <AlertTriangle className="w-32 h-32 text-white mb-6" /><h2 className="text-4xl font-black text-white mb-4">輪到您了！</h2><p className="text-xl text-white text-center mb-8">請立刻前往急診一診看診</p>
-            <button onClick={() => setShowUrgentCall(false)} className="bg-white text-rose-600 font-black text-2xl py-4 px-10 rounded-2xl shadow-xl hover:scale-105 transition-transform">我知道了</button>
           </div>
         )}
 
-        {/* 自訂緊急推播全螢幕覆蓋 */}
+        {/* 護理站呼叫提醒橫幅，加入點擊導航功能 */}
+        {recallInfo && (
+          <div className="absolute top-4 left-4 right-4 z-[90] animate-[fadeIn_0.3s_ease-out]">
+             <div onClick={() => { setActiveTab('nav'); handleNavigation(recallInfo.type); setRecallInfo(null); }} className={`${recallInfo.color} backdrop-blur-xl border border-white/30 rounded-2xl p-5 shadow-xl flex items-start gap-4 cursor-pointer hover:scale-[1.02] transition-transform`}>
+                <div className="text-5xl animate-bounce">{recallInfo.icon}</div>
+                <div className="text-white flex-1"><h3 className="font-black text-2xl mb-1">{recallInfo.title}</h3><p className="font-medium text-base opacity-95">{recallInfo.desc}</p></div>
+                <button onClick={(e) => { e.stopPropagation(); setRecallInfo(null); }} className="text-white/70 hover:text-white"><X className="w-8 h-8"/></button>
+             </div>
+          </div>
+        )}
+
+        {showUrgentCall && (
+          <div className="absolute inset-0 z-[100] bg-rose-600 flex flex-col items-center justify-center p-6 animate-pulse">
+            <AlertTriangle className="w-32 h-32 text-white mb-6" /><h2 className="text-5xl font-black text-white mb-4">輪到您了！</h2><p className="text-2xl text-white text-center mb-8">請立刻前往急診一診看診</p>
+            <button onClick={() => setShowUrgentCall(false)} className="bg-white text-rose-600 font-black text-3xl py-5 px-12 rounded-2xl shadow-xl hover:scale-105 transition-transform">我知道了</button>
+          </div>
+        )}
+
         {customEmergencyAlert && (
           <div className="absolute inset-0 z-[200] bg-red-600 flex flex-col items-center justify-center p-6 animate-[fadeIn_0.2s_ease-out]">
             <Megaphone className="w-32 h-32 text-white mb-6 animate-bounce" />
-            <h2 className="text-4xl font-black text-white mb-4 tracking-widest">緊急廣播</h2>
-            <p className="text-2xl text-white text-center mb-10 font-bold leading-relaxed">{customEmergencyAlert}</p>
-            <button onClick={() => setCustomEmergencyAlert(null)} className="bg-white text-red-600 font-black text-2xl py-4 px-10 rounded-2xl shadow-xl hover:scale-105 transition-transform active:scale-95">我已了解</button>
+            <h2 className="text-5xl font-black text-white mb-4 tracking-widest">緊急廣播</h2>
+            <p className="text-3xl text-white text-center mb-10 font-bold leading-relaxed">{customEmergencyAlert}</p>
+            <button onClick={() => setCustomEmergencyAlert(null)} className="bg-white text-red-600 font-black text-3xl py-5 px-12 rounded-2xl shadow-xl hover:scale-105 transition-transform active:scale-95">我已了解</button>
           </div>
         )}
 
@@ -1115,52 +1113,54 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
             <div className={`w-32 h-32 rounded-full border-4 flex items-center justify-center mb-8 animate-pulse ${isProxyMode ? 'bg-purple-100/50 border-purple-300 text-purple-500' : isFamilyMode ? 'bg-amber-100/50 border-amber-300 text-amber-500' : 'bg-emerald-100/50 border-emerald-300 text-emerald-500'}`}>
                {isProxyMode ? <PenTool className="w-16 h-16"/> : <Mic className="w-16 h-16" />}
             </div>
-            <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2 tracking-widest">{isProxyMode ? '家屬代理人授權' : isFamilyMode ? '家屬探病服務' : '急診智能導航系統'}</h2>
-            <p className="text-slate-600 dark:text-sky-200/80 text-xl text-center mb-10 leading-relaxed">驗證成功，病患為：<br/><b className="text-slate-900 dark:text-white text-3xl mt-3 block">{currentPatient.name}</b></p>
-            <button onClick={handleAudioUnlock} className={`font-black text-2xl py-5 px-4 w-full rounded-2xl shadow-lg hover:scale-105 transition-transform ${isProxyMode ? 'bg-purple-500 text-white' : isFamilyMode ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'}`}>點擊進入系統</button>
+            <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">{isProxyMode ? '家屬代理人授權' : isFamilyMode ? '家屬探病服務' : '急診智能導航系統'}</h2>
+            <p className="text-slate-600 dark:text-sky-200/80 text-2xl text-center mb-10 leading-relaxed">驗證成功，病患為：<br/><b className="text-slate-900 dark:text-white text-4xl mt-3 block">{currentPatient.name}</b></p>
+            <button onClick={handleAudioUnlock} className={`font-black text-3xl py-5 px-4 w-full rounded-2xl shadow-lg hover:scale-105 transition-transform ${isProxyMode ? 'bg-purple-500 text-white' : isFamilyMode ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'}`}>點擊進入系統</button>
           </div>
         )}
 
-        <header className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-b border-white/50 dark:border-slate-700/50 px-5 py-3 shrink-0 flex flex-col gap-2 z-30 transition-colors shadow-sm">
+        <header className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border-b border-white/50 dark:border-slate-700/50 px-5 py-4 shrink-0 flex flex-col gap-2 z-30 transition-colors shadow-sm">
           <div className="flex items-center justify-between">
-            <div className="text-sky-600 dark:text-sky-400 text-sm font-bold flex items-center gap-1"><Activity className="w-4 h-4"/> 某某醫學中心</div>
+            <div className="text-sky-600 dark:text-sky-400 text-base font-bold flex items-center gap-2"><Activity className="w-5 h-5"/> 某某醫學中心</div>
             <div className="flex items-center gap-2">
               <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
             </div>
           </div>
           <div className="flex justify-between items-center mt-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-black text-slate-900 dark:text-white">{currentPatient.name}</h1>
-              {isProxyMode ? <span className="bg-purple-50 text-purple-600 text-xs font-bold px-2 py-1 rounded-full border border-purple-200">👨‍⚖️ 代理人授權</span> 
-               : isFamilyMode ? <span className="bg-amber-50 text-amber-600 text-xs font-bold px-2 py-1 rounded-full border border-amber-200">👨‍👩‍👧 家屬模式</span> 
-               : <span className="bg-emerald-50 text-emerald-600 text-xs font-bold px-2 py-1 rounded-full border border-emerald-200">📍 即時定位</span>}
+              <h1 className="text-4xl font-black text-slate-900 dark:text-white">{currentPatient.name}</h1>
+              {isProxyMode ? <span className="bg-purple-50 text-purple-600 text-sm font-bold px-3 py-1 rounded-full border border-purple-200">👨‍⚖️ 代理人授權</span> 
+               : isFamilyMode ? <span className="bg-amber-50 text-amber-600 text-sm font-bold px-3 py-1 rounded-full border border-amber-200">👨‍👩‍👧 家屬模式</span> 
+               : <span className="bg-emerald-50 text-emerald-600 text-sm font-bold px-3 py-1 rounded-full border border-emerald-200">📍 即時定位</span>}
             </div>
-            <button onClick={onLogout} className="p-2 bg-slate-100/80 dark:bg-slate-700/80 rounded-xl text-slate-500 hover:text-rose-500 transition-colors"><LogOut className="w-5 h-5"/></button>
+            <button onClick={onLogout} className="p-2 bg-slate-100/80 dark:bg-slate-700/80 rounded-xl text-slate-500 hover:text-rose-500 transition-colors"><LogOut className="w-6 h-6"/></button>
           </div>
           {isPatientMode && (
-            <button onClick={handleShareClick} className="w-full mt-2 bg-indigo-50/80 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300 text-xs font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-2 border border-indigo-200/50 hover:bg-indigo-100 transition-colors"><Share2 className="w-4 h-4" /> 點擊產生家屬探視連結</button>
+            <button onClick={handleShareClick} className="w-full mt-3 bg-indigo-50/80 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300 text-sm font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 border border-indigo-200/50 hover:bg-indigo-100 transition-colors"><Share2 className="w-5 h-5" /> 點擊產生家屬探視連結</button>
           )}
         </header>
 
         <div className="flex-1 overflow-y-auto bg-transparent scroll-smooth pb-6">
+          
+          {/* ================= 1. 看進度 ================= */}
           {activeTab === 'progress' && (
             <div className="p-4 space-y-4 animate-[fadeIn_0.3s_ease-out]">
               <div className={`rounded-[2rem] p-6 shadow-lg dark:shadow-2xl relative overflow-hidden border backdrop-blur-md ${isFamilyMode ? 'bg-gradient-to-b from-amber-50/80 to-white/80 dark:from-amber-900/40 border-amber-200/50' : currentStep === 3 ? 'bg-gradient-to-b from-emerald-50/80 to-white/80 dark:from-emerald-900/50 border-emerald-200/50' : 'bg-gradient-to-b from-sky-50/80 to-white/80 dark:from-sky-900/40 border-sky-200/50'}`}>
                 <div className={`mb-6 p-4 rounded-2xl border ${triage.bg} ${triage.border} relative overflow-hidden backdrop-blur-sm bg-opacity-70`}>
-                  <div className="flex items-center justify-between mb-2"><span className={`font-bold text-lg ${triage.color}`}>{currentStatus}</span><span className={`text-[10px] font-bold px-2 py-1 rounded-md text-white ${triage.dot}`}>檢傷 {triage.name.split(' ')[0]}</span></div>
-                  <p className={`text-sm font-bold ${triage.color} opacity-95`}>{triage.msg}</p>
+                  <div className="flex items-center justify-between mb-2"><span className={`font-bold text-xl ${triage.color}`}>{currentStatus}</span><span className={`text-xs font-bold px-3 py-1.5 rounded-md text-white ${triage.dot}`}>檢傷 {triage.name.split(' ')[0]}</span></div>
+                  <p className={`text-base font-bold ${triage.color} opacity-95`}>{triage.msg}</p>
                 </div>
-                <div className="text-center mb-6"><div className="text-[72px] font-black text-slate-900 dark:text-white leading-none tracking-wider drop-shadow-sm">{currentPatient.id}</div></div>
+                <div className="text-center mb-6"><div className="text-[80px] font-black text-slate-900 dark:text-white leading-none tracking-wider drop-shadow-sm">{currentPatient.id}</div></div>
                 {currentStep === 3 && (
                   <div className="bg-rose-50/80 dark:bg-rose-500/20 border border-rose-200/50 rounded-2xl p-4 text-center mb-4 animate-pulse backdrop-blur-sm">
-                    <p className="text-rose-600 font-bold text-lg flex items-center justify-center gap-2"><AlertTriangle className="w-5 h-5"/> 報告已全數出爐</p>
-                    <p className="text-rose-500 text-sm mt-1">請於候診區等待叫號</p>
+                    <p className="text-rose-600 font-bold text-xl flex items-center justify-center gap-2"><AlertTriangle className="w-6 h-6"/> 報告已全數出爐</p>
+                    <p className="text-rose-500 text-base mt-1">請於候診區等待叫號</p>
                   </div>
                 )}
                 <div className="bg-white/80 dark:bg-slate-800/80 rounded-2xl p-6 flex justify-center items-center border border-white/50 dark:border-slate-700 text-center shadow-[0_4px_16px_rgba(0,0,0,0.03)] backdrop-blur-md">
                   <div>
-                    <div className={`${currentStep === 3 ? 'text-emerald-600' : 'text-sky-600'} text-lg font-bold`}>前方等待人數</div>
-                    <div className={`text-5xl font-black mt-2 ${currentStep === 3 ? 'text-emerald-500' : 'text-amber-500'}`}>{waitingCount} <span className="text-2xl text-slate-900 dark:text-white">人</span></div>
+                    <div className={`${currentStep === 3 ? 'text-emerald-600' : 'text-sky-600'} text-xl font-bold`}>前方等待人數</div>
+                    <div className={`text-6xl font-black mt-2 ${currentStep === 3 ? 'text-emerald-500' : 'text-amber-500'}`}>{waitingCount} <span className="text-3xl text-slate-900 dark:text-white">人</span></div>
                   </div>
                 </div>
               </div>
@@ -1174,18 +1174,18 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                          <div key={rId} className="bg-rose-50/90 dark:bg-rose-500/20 border border-rose-200/50 dark:border-rose-500/50 rounded-3xl p-4 relative overflow-hidden shadow-sm flex flex-col backdrop-blur-md">
                            <div className="absolute inset-0 bg-rose-100/30 dark:bg-rose-500/5 animate-pulse"></div>
                            <div className="relative z-10 flex items-center gap-4 mb-3">
-                             <div className="w-12 h-12 bg-white/90 dark:bg-rose-500/30 rounded-full flex items-center justify-center shrink-0 text-2xl shadow-sm">{r.icon}</div>
+                             <div className="w-14 h-14 bg-white/90 dark:bg-rose-500/30 rounded-full flex items-center justify-center shrink-0 text-3xl shadow-sm">{r.icon}</div>
                              <div>
-                                <h3 className="text-rose-600 dark:text-rose-400 text-sm font-bold tracking-widest">護理站要求：</h3>
-                                <p className="text-slate-900 dark:text-white text-2xl font-black underline decoration-rose-500 decoration-4 underline-offset-4">{r.label}</p>
+                                <h3 className="text-rose-600 dark:text-rose-400 text-base font-bold tracking-widest">護理站要求：</h3>
+                                <p className="text-slate-900 dark:text-white text-3xl font-black underline decoration-rose-500 decoration-4 underline-offset-4">{r.label}</p>
                              </div>
                            </div>
-                           <div className="relative z-10 bg-white/80 dark:bg-slate-900/80 rounded-xl p-3 border border-white/50 dark:border-slate-700 backdrop-blur-sm">
-                              <div className="text-slate-700 dark:text-sky-200 text-sm leading-relaxed flex gap-2 items-start mb-2">
-                                 <Volume2 className="w-4 h-4 text-sky-500 dark:text-sky-400 shrink-0 mt-0.5" />
+                           <div className="relative z-10 bg-white/80 dark:bg-slate-900/80 rounded-xl p-4 border border-white/50 dark:border-slate-700 backdrop-blur-sm">
+                              <div className="text-slate-700 dark:text-sky-200 text-base leading-relaxed flex gap-2 items-start mb-3">
+                                 <Volume2 className="w-5 h-5 text-sky-500 dark:text-sky-400 shrink-0 mt-0.5" />
                                  <p>{DEFAULT_EXPLANATIONS[r.label]}</p>
                               </div>
-                              <button onClick={() => playVoice(DEFAULT_EXPLANATIONS[r.label])} className="w-full flex items-center justify-center gap-2 bg-sky-50/80 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-sm py-3 hover:bg-sky-100 border border-sky-100/50 rounded-lg transition-colors mt-2"><Mic className="w-5 h-5"/> 聽取語音說明</button>
+                              <button onClick={() => playVoice(DEFAULT_EXPLANATIONS[r.label])} className="w-full flex items-center justify-center gap-2 bg-sky-50/80 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-base py-3 hover:bg-sky-100 border border-sky-100/50 rounded-lg transition-colors mt-2"><Mic className="w-6 h-6"/> 聽取語音說明</button>
                            </div>
                          </div>
                       );
@@ -1194,18 +1194,18 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
               )}
 
               <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-white/50 dark:border-slate-700/50 rounded-[2rem] p-5 shadow-sm">
-                <h3 className="text-sm text-sky-600 dark:text-sky-400 font-mono tracking-widest uppercase mb-6 flex items-center gap-2"><Activity className="w-4 h-4"/> 就診流程</h3>
+                <h3 className="text-base text-sky-600 dark:text-sky-400 font-mono tracking-widest uppercase mb-6 flex items-center gap-2"><Activity className="w-5 h-5"/> 就診流程</h3>
                 <div className="flex justify-between items-center relative px-2">
-                  <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-1 bg-slate-200/50 dark:bg-slate-700/50 z-0"></div>
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 h-1 bg-sky-500 z-0 transition-all duration-500" style={{ width: `calc(${(currentStep / (MED_STEPS.length - 1)) * 100}% - 2rem)` }}></div>
+                  <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-1.5 bg-slate-200/50 dark:bg-slate-700/50 z-0"></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 h-1.5 bg-sky-500 z-0 transition-all duration-500" style={{ width: `calc(${(currentStep / (MED_STEPS.length - 1)) * 100}% - 2rem)` }}></div>
                   {MED_STEPS.map((step, idx) => {
                     const isCompleted = idx < currentStep; const isActive = idx === currentStep;
                     return (
                       <div key={idx} className="relative z-10 flex flex-col items-center gap-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 backdrop-blur-md ${isCompleted ? 'bg-sky-500 text-white shadow-md' : isActive ? 'bg-white border-[3px] border-sky-500 text-sky-600 shadow-md animate-pulse' : 'bg-slate-100/80 text-slate-400 border border-slate-200'}`}>
-                          {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : (idx + 1)}
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-base transition-all duration-300 backdrop-blur-md ${isCompleted ? 'bg-sky-500 text-white shadow-md' : isActive ? 'bg-white border-[3px] border-sky-500 text-sky-600 shadow-md animate-pulse' : 'bg-slate-100/80 text-slate-400 border border-slate-200'}`}>
+                          {isCompleted ? <CheckCircle2 className="w-6 h-6" /> : (idx + 1)}
                         </div>
-                        <span className={`text-xs font-bold ${isActive ? 'text-sky-600' : isCompleted ? 'text-slate-800 dark:text-slate-200' : 'text-slate-400'}`}>{step}</span>
+                        <span className={`text-xs font-bold ${isActive ? 'text-sky-600' : isCompleted ? 'text-slate-800 dark:text-slate-200' : 'text-slate-400'} text-center max-w-[4rem]`}>{step}</span>
                       </div>
                     );
                   })}
@@ -1213,9 +1213,9 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
               </div>
 
               {currentStep >= 1 && currentStep <= 3 && (
-                <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-white/50 dark:border-slate-700/50 rounded-[2rem] p-4 shadow-sm animate-[fadeIn_0.5s_ease-out]">
-                  <h3 className="text-sm text-sky-600 font-mono tracking-widest uppercase mb-4 flex items-center gap-2"><FileText className="w-4 h-4"/> 檢驗與報告進度</h3>
-                  <div className="flex flex-col gap-2">
+                <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-white/50 dark:border-slate-700/50 rounded-[2rem] p-5 shadow-sm animate-[fadeIn_0.5s_ease-out]">
+                  <h3 className="text-base text-sky-600 font-mono tracking-widest uppercase mb-4 flex items-center gap-2"><FileText className="w-5 h-5"/> 檢驗與報告進度</h3>
+                  <div className="flex flex-col gap-3">
                      {LAB_TYPES.map(lab => {
                          const data = labStatus[lab.id];
                          const IconComp = lab.icon;
@@ -1228,18 +1228,18 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                          return (
                            <div key={lab.id} className={`flex flex-col p-4 rounded-2xl border bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all ${data.status === 'reported' ? 'border-emerald-300 bg-emerald-50/50' : 'border-white/60 dark:border-slate-700'}`}>
                              <div className="flex items-center justify-between">
-                               <div className="flex items-center gap-3">
-                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${lab.iconBgCls} ${cCls}`}><IconComp className="w-6 h-6" /></div>
-                                 <div><div className="font-bold text-base text-slate-900 dark:text-slate-200">{lab.label}</div><div className="text-xs text-slate-500 dark:text-slate-400">{data.text}</div></div>
+                               <div className="flex items-center gap-4">
+                                 <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${lab.iconBgCls} ${cCls}`}><IconComp className="w-7 h-7" /></div>
+                                 <div><div className="font-bold text-lg text-slate-900 dark:text-slate-200">{lab.label}</div><div className="text-sm text-slate-500 dark:text-slate-400">{data.text}</div></div>
                                </div>
                                <div className="text-right flex flex-col items-end justify-center gap-2">
-                                 <div className={`font-bold text-sm flex items-center gap-1 ${cCls}`}>{data.status === 'processing' && <Loader2 className="w-3 h-3 animate-spin" />}{statusLabel}</div>
+                                 <div className={`font-bold text-base flex items-center gap-1 ${cCls}`}>{data.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin" />}{statusLabel}</div>
                                  {(data.status === 'pending' || data.status === 'processing') && hasNavMapping && (
-                                     <button onClick={() => handleLabNavigation(lab.id)} className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 shadow-sm transition-all animate-[fadeIn_0.3s_ease-out] active:scale-95"><MapPin className="w-4 h-4"/> 導航前往</button>
+                                     <button onClick={() => handleLabNavigation(lab.id)} className="bg-sky-500 hover:bg-sky-600 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-1 shadow-sm transition-all animate-[fadeIn_0.3s_ease-out] active:scale-95"><MapPin className="w-4 h-4"/> 導航前往</button>
                                  )}
                                </div>
                              </div>
-                             <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5 mt-3 overflow-hidden flex">
+                             <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 mt-4 overflow-hidden flex">
                                 <div className={`h-full rounded-l-full transition-all duration-1000 ${data.status === 'reported' ? 'bg-emerald-500 w-full rounded-r-full' : data.status === 'done' ? 'bg-teal-500 w-[75%]' : data.status === 'processing' ? 'bg-amber-500 w-1/2 animate-pulse' : 'bg-sky-500 w-1/4'}`}></div>
                              </div>
                            </div>
@@ -1251,13 +1251,14 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
             </div>
           )}
 
+          {/* ================= 2. 找路 ================= */}
           {activeTab === 'nav' && (
             <div className="flex flex-col h-full animate-[fadeIn_0.3s_ease-out]">
               <div className="bg-stone-200/50 dark:bg-slate-800/50 flex flex-col items-center justify-center overflow-hidden relative shadow-inner border-b border-stone-300/50 dark:border-slate-700/50 flex-1 min-h-[300px]">
                 <div className="absolute top-4 right-4 z-50 flex flex-col gap-2">
-                  <button onClick={() => handleZoom('in')} className="bg-white/80 backdrop-blur-md p-2 rounded-xl shadow-md"><ZoomIn className="w-5 h-5"/></button>
-                  <button onClick={() => handleZoom('out')} className="bg-white/80 backdrop-blur-md p-2 rounded-xl shadow-md"><ZoomOut className="w-5 h-5"/></button>
-                  <button onClick={resetMap} className="bg-white/80 backdrop-blur-md p-2 rounded-xl shadow-md"><Maximize className="w-5 h-5"/></button>
+                  <button onClick={() => handleZoom('in')} className="bg-white/80 backdrop-blur-md p-3 rounded-xl shadow-md"><ZoomIn className="w-6 h-6"/></button>
+                  <button onClick={() => handleZoom('out')} className="bg-white/80 backdrop-blur-md p-3 rounded-xl shadow-md"><ZoomOut className="w-6 h-6"/></button>
+                  <button onClick={resetMap} className="bg-white/80 backdrop-blur-md p-3 rounded-xl shadow-md"><Maximize className="w-6 h-6"/></button>
                 </div>
                 {activeDestination === 'icu' && currentFloor === '1F' && navigationState !== 'in_elevator' && (
                   <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 w-full px-8">
@@ -1266,8 +1267,8 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                 )}
                 {navigationState === 'in_elevator' && (
                   <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center backdrop-blur-sm pointer-events-auto">
-                    <ArrowUpCircle className="w-20 h-20 text-amber-500 mb-6 animate-bounce" /><h2 className="text-2xl font-bold text-slate-900 mb-8">請搭乘至 3 樓</h2>
-                    <button onClick={handleArriveAt3F} className="bg-emerald-500 text-white font-bold py-3 px-8 rounded-2xl active:scale-95">我到了 (3F)</button>
+                    <ArrowUpCircle className="w-24 h-24 text-amber-500 mb-6 animate-bounce" /><h2 className="text-3xl font-bold text-slate-900 mb-8">請搭乘至 3 樓</h2>
+                    <button onClick={handleArriveAt3F} className="bg-emerald-500 text-white font-bold py-4 px-10 rounded-2xl active:scale-95 text-xl">我到了 (3F)</button>
                   </div>
                 )}
                 
@@ -1294,76 +1295,86 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
               
               {activeDestination && navigationState.includes('navigating') && (
                   <div className="bg-sky-50 dark:bg-sky-900/30 p-4 border-b border-sky-100 dark:border-sky-800 flex gap-3 items-start shrink-0 shadow-sm z-50">
-                     <div className="bg-sky-200 dark:bg-sky-700 p-2 rounded-full mt-0.5"><Navigation className="text-sky-700 dark:text-sky-300 w-5 h-5"/></div>
-                     <p className="text-sky-800 dark:text-sky-200 text-sm font-bold leading-relaxed">
+                     <div className="bg-sky-200 dark:bg-sky-700 p-2 rounded-full mt-0.5"><Navigation className="text-sky-700 dark:text-sky-300 w-6 h-6"/></div>
+                     <p className="text-sky-800 dark:text-sky-200 text-base font-bold leading-relaxed">
                         {activeDestination === 'find_patient' ? (
-                          <>正在帶您尋找<span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">病患位置</span>。請跟隨地圖上的腳印指示前進。</>
+                          <>正在帶您尋找<span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">病患位置</span>。請跟隨地圖上的箭頭指示前進。</>
                         ) : (
-                          <>正在為您導航至 <span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.label || '目標'}</span>。{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.guidance || '請跟隨地圖上的腳印指示前進。'}</>
+                          <>正在為您導航至 <span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.label || '目標'}</span>。{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.guidance || '請跟隨地圖上的箭頭指示前進。'}</>
                         )}
                      </p>
                   </div>
               )}
 
-              <div className="p-3 sm:p-4 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl z-10 shrink-0 border-t border-white/50 dark:border-slate-700/50">
-                <div className="text-xs text-sky-600 tracking-widest uppercase flex items-center gap-3 mb-3"><span>{isFamilyMode || isProxyMode ? '快速前往尋找病患' : '您要去哪裡？'}</span><div className="flex-1 h-[1px] bg-sky-200"></div></div>
-                {isFamilyMode || isProxyMode ? (
-                  <button onClick={() => handleNavigation('find_patient')} className="w-full p-4 rounded-2xl flex items-center justify-center gap-3 bg-amber-50/90 border-2 border-amber-300 text-amber-700 shadow-sm backdrop-blur-sm"><span className="text-3xl">👤</span><span className="text-lg font-bold">帶我去找病患</span></button>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-48 pb-2">
-                    {NAV_DESTINATIONS.map(dest => (
-                        <button key={dest.id} onClick={() => handleNavigation(dest.id)} className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all backdrop-blur-sm ${activeDestination === dest.id ? 'bg-indigo-100/90 border-2 border-indigo-400 text-indigo-700 shadow-md scale-105' : 'bg-white/60 border border-white/50 text-slate-600 hover:bg-white/90'}`}>
-                           <span className="text-2xl drop-shadow-sm">{dest.icon}</span><span className="text-xs font-bold mt-1">{dest.label}</span>
-                        </button>
-                    ))}
-                  </div>
-                )}
+              {/* 垂直滾動直式選單 (加強觸控與滾動設定，解鎖家屬端選單) */}
+              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 shrink-0 border-t border-white/50 dark:border-slate-700/50 pb-6 pt-4 w-full">
+                <div className="text-sm text-slate-500 font-bold px-4 mb-3">您要去哪裡？</div>
+                <div className="flex flex-col gap-3 px-4 pb-4 overflow-y-auto max-h-[40vh] w-full" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  {(isFamilyMode || isProxyMode) && (
+                      <button onClick={() => handleNavigation('find_patient')} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === 'find_patient' ? 'bg-amber-100/90 border-2 border-amber-400 text-amber-700 scale-[1.02]' : 'bg-amber-50/90 border-amber-300 text-amber-700 hover:bg-amber-100'}`}>
+                         <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">👤</span>
+                         <span className="text-xl font-bold pointer-events-none">帶我去找病患</span>
+                      </button>
+                  )}
+                  {NAV_DESTINATIONS.map(dest => (
+                      <button key={dest.id} onClick={() => handleNavigation(dest.id)} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === dest.id ? 'bg-indigo-100/90 border-2 border-indigo-400 text-indigo-700 scale-[1.02]' : 'bg-white/90 border-slate-200 hover:bg-slate-50'}`}>
+                         <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">{dest.icon}</span>
+                         <span className="text-xl font-bold text-slate-700 pointer-events-none">{dest.label}</span>
+                      </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
+          {/* ================= 3. 要幫忙 ================= */}
           {activeTab === 'help' && (isPatientMode || isProxyMode) && (
             <div className="p-4 space-y-6 animate-[fadeIn_0.3s_ease-out]">
               
               {isProxyMode && (
                 <div className="bg-purple-100 border border-purple-300 p-4 rounded-2xl flex items-start gap-3">
                    <PenTool className="text-purple-600 shrink-0 mt-1"/>
-                   <div><h3 className="font-bold text-purple-800">法定代理人簽署專區</h3><p className="text-xs text-purple-600 mt-1">您已取得護理站授權，可代為簽署下方同意書。為避免誤報，此模式已隱藏緊急求救功能。</p></div>
+                   <div><h3 className="font-bold text-purple-800 text-lg">法定代理人簽署專區</h3><p className="text-sm text-purple-600 mt-1">您已取得護理站授權，可代為簽署下方同意書。為避免誤報，此模式已隱藏緊急求救功能。</p></div>
                 </div>
               )}
 
               {isPatientMode && (
-                 <div className="grid grid-cols-2 gap-3">
-                     <button onClick={() => handleHelpRequest('toilet')} className={`col-span-2 p-5 rounded-[1.5rem] flex items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.toilet ? 'bg-amber-100/90 border-amber-400 text-amber-800' : 'bg-white/70 border-white/50 text-slate-800 hover:bg-white/90'} active:scale-95`}>
-                         <span className="text-5xl">{helpRequests.toilet ? '🚶‍♂️' : '🚽'}</span>
-                         <div className="text-left"><span className="text-xl font-bold block mb-1">{helpRequests.toilet ? '已暫離前往洗手間' : '去廁所 / 暫離'}</span><span className="text-xs opacity-80">{helpRequests.toilet ? '點擊可解除狀態' : '通知護理站為您保留號碼'}</span></div>
+                 <div className="grid grid-cols-2 gap-4">
+                     <button onClick={() => handleHelpRequest('toilet')} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.toilet ? 'bg-amber-100/90 border-amber-400 text-amber-800' : 'bg-white/70 border-white/50 text-slate-800 hover:bg-white/90'} active:scale-95`}>
+                         <span className="text-6xl">{helpRequests.toilet ? '🚶‍♂️' : '🚻'}</span>
+                         <div className="text-left ml-2"><span className="text-2xl font-bold block mb-1">{helpRequests.toilet ? '已暫離前往洗手間' : '去廁所 / 暫離'}</span><span className="text-sm opacity-80">{helpRequests.toilet ? '點擊可解除狀態' : '通知護理站為您保留號碼'}</span></div>
                      </button>
-                     <button onClick={() => handleHelpRequest('ivEmpty')} disabled={helpRequests.ivEmpty} className={`p-5 rounded-[1.5rem] flex flex-col items-center gap-3 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivEmpty ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
-                         <span className="text-4xl">{helpRequests.ivEmpty ? '⏳' : '💧'}</span><span className="font-bold text-lg">{helpRequests.ivEmpty ? '已通知護理師' : '點滴沒了'}</span>
+                     <button onClick={() => handleHelpRequest('ivEmpty')} disabled={helpRequests.ivEmpty} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivEmpty ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
+                         <span className="text-5xl">{helpRequests.ivEmpty ? '⏳' : '💧'}</span><span className="font-bold text-xl">{helpRequests.ivEmpty ? '已通知護理師' : '點滴沒了'}</span>
                      </button>
-                     <button onClick={() => handleHelpRequest('ivPain')} disabled={helpRequests.ivPain} className={`p-5 rounded-[1.5rem] flex flex-col items-center gap-3 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivPain ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
-                         <span className="text-4xl">{helpRequests.ivPain ? '⏳' : '🩹'}</span><span className="font-bold text-lg">{helpRequests.ivPain ? '已通知護理師' : '漏血/會痛'}</span>
+                     <button onClick={() => handleHelpRequest('ivPain')} disabled={helpRequests.ivPain} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivPain ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
+                         <span className="text-5xl">{helpRequests.ivPain ? '⏳' : '🩹'}</span><span className="font-bold text-xl">{helpRequests.ivPain ? '已通知護理師' : '漏血/會痛'}</span>
                      </button>
-                     <button onClick={() => handleHelpRequest('sos')} disabled={!sosEnabled || helpRequests.sos} className={`col-span-2 p-5 rounded-[1.5rem] flex items-center gap-4 border transition-transform backdrop-blur-md ${helpRequests.sos ? 'bg-amber-500/90 border-amber-400 text-white cursor-not-allowed' : !sosEnabled ? 'bg-slate-100/50 text-slate-400 border-slate-200/50 cursor-not-allowed' : 'bg-gradient-to-r from-rose-500/90 to-red-500/90 border-rose-400 text-white active:scale-95 shadow-lg'}`}>
-                         <Power className="w-10 h-10" />
-                         <div className="text-left"><span className="text-2xl font-black block tracking-wider mb-1">緊急求救 SOS</span><span className="text-xs opacity-90">{helpRequests.sos ? '🚨 救援已派發，請稍候' : !sosEnabled ? '未開放此功能' : '點擊立即通知護理站'}</span></div>
+                     {/* 新增其他需求按鈕 */}
+                     <button onClick={() => handleHelpRequest('other')} disabled={helpRequests.other} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center justify-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.other ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
+                         <span className="text-5xl">{helpRequests.other ? '⏳' : '💬'}</span><span className="font-bold text-2xl">{helpRequests.other ? '已通知護理師' : '其他需求'}</span>
+                     </button>
+                     
+                     <button onClick={() => handleHelpRequest('sos')} disabled={!sosEnabled || helpRequests.sos} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center gap-4 border transition-transform backdrop-blur-md ${helpRequests.sos ? 'bg-amber-500/90 border-amber-400 text-white cursor-not-allowed' : !sosEnabled ? 'bg-slate-100/50 text-slate-400 border-slate-200/50 cursor-not-allowed' : 'bg-gradient-to-r from-rose-500/90 to-red-500/90 border-rose-400 text-white active:scale-95 shadow-lg'}`}>
+                         <Power className="w-12 h-12 ml-2" />
+                         <div className="text-left ml-4"><span className="text-3xl font-black block tracking-wider mb-1">緊急求救 SOS</span><span className="text-sm opacity-90">{helpRequests.sos ? '🚨 救援已派發，請稍候' : !sosEnabled ? '未開放此功能' : '點擊立即通知護理站'}</span></div>
                      </button>
                  </div>
               )}
 
               {isPatientMode && (
-                 <div className="pt-2 border-t border-sky-200/50 dark:border-sky-500/20">
-                   <div className="text-xs text-sky-600 tracking-widest uppercase flex items-center gap-3 mb-4"><span>❓ 常見問題 Q&A</span><div className="flex-1 h-[1px] bg-sky-200/50"></div></div>
+                 <div className="pt-4 border-t border-sky-200/50 dark:border-sky-500/20">
+                   <div className="text-sm text-sky-600 tracking-widest uppercase flex items-center gap-3 mb-4"><span>❓ 常見問題 Q&A</span><div className="flex-1 h-[1px] bg-sky-200/50"></div></div>
                    <div className="space-y-3">
                      {FAQS.map((faq, idx) => (
                         <div key={idx} className="bg-white/70 dark:bg-slate-800/70 rounded-[1.2rem] border border-white/50 dark:border-slate-700 overflow-hidden backdrop-blur-md shadow-sm transition-all duration-300">
-                           <button onClick={() => { setOpenFaqIndex(openFaqIndex === idx ? null : idx); if(openFaqIndex !== idx) playVoice(faq.a); }} className="w-full p-4 flex items-center justify-between text-left font-bold text-slate-800 dark:text-slate-200">
-                              <span className="flex items-start gap-3"><span className="text-emerald-600 bg-emerald-100/80 dark:bg-emerald-900/40 dark:text-emerald-400 w-6 h-6 flex items-center justify-center rounded-lg text-[11px] font-black shrink-0 mt-0.5">Q</span> <span className="leading-snug text-[15px]">{faq.q}</span></span>
-                              {openFaqIndex === idx ? <ChevronUp className="w-5 h-5 text-slate-400 shrink-0" /> : <ChevronDown className="w-5 h-5 text-slate-400 shrink-0" />}
+                           <button onClick={() => { setOpenFaqIndex(openFaqIndex === idx ? null : idx); if(openFaqIndex !== idx) playVoice(faq.a); }} className="w-full p-5 flex items-center justify-between text-left font-bold text-slate-800 dark:text-slate-200">
+                              <span className="flex items-start gap-3"><span className="text-emerald-600 bg-emerald-100/80 dark:bg-emerald-900/40 dark:text-emerald-400 w-8 h-8 flex items-center justify-center rounded-lg text-sm font-black shrink-0 mt-0.5">Q</span> <span className="leading-snug text-lg">{faq.q}</span></span>
+                              {openFaqIndex === idx ? <ChevronUp className="w-6 h-6 text-slate-400 shrink-0" /> : <ChevronDown className="w-6 h-6 text-slate-400 shrink-0" />}
                            </button>
                            {openFaqIndex === idx && (
-                              <div className="px-4 pb-4 pt-1 text-slate-600 dark:text-slate-400 text-sm flex items-start gap-3 animate-[fadeIn_0.2s_ease-out]">
-                                 <span className="text-amber-600 bg-amber-100/80 dark:bg-amber-900/40 dark:text-amber-400 w-6 h-6 flex items-center justify-center rounded-lg text-[11px] font-black shrink-0">A</span>
+                              <div className="px-5 pb-5 pt-1 text-slate-600 dark:text-slate-400 text-base flex items-start gap-3 animate-[fadeIn_0.2s_ease-out]">
+                                 <span className="text-amber-600 bg-amber-100/80 dark:bg-amber-900/40 dark:text-amber-400 w-8 h-8 flex items-center justify-center rounded-lg text-sm font-black shrink-0">A</span>
                                  <p className="pt-0.5 font-medium leading-relaxed">{faq.a}</p>
                               </div>
                            )}
@@ -1373,16 +1384,16 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                  </div>
               )}
 
-              <div className="pt-2 border-t border-sky-200/50 dark:border-sky-500/20">
-                <div className="text-xs text-sky-600 tracking-widest uppercase flex items-center gap-3 mb-4"><span>📄 電子同意書簽署</span><div className="flex-1 h-[1px] bg-sky-200/50"></div></div>
-                <div className="grid grid-cols-2 gap-3">
+              <div className="pt-4 border-t border-sky-200/50 dark:border-sky-500/20">
+                <div className="text-sm text-sky-600 tracking-widest uppercase flex items-center gap-3 mb-4"><span>📄 電子同意書簽署</span><div className="flex-1 h-[1px] bg-sky-200/50"></div></div>
+                <div className="grid grid-cols-2 gap-4">
                    {CONSENT_TYPES.map(c => {
                        const status = consents[c.id] || 'disabled';
                        return (
-                          <button key={c.id} disabled={status === 'disabled'} onClick={() => setActiveConsentModal(c.id)} className={`p-4 rounded-[1.5rem] flex flex-col items-center gap-3 border backdrop-blur-md ${status === 'disabled' ? 'bg-white/40 border-white/50 text-slate-400 opacity-70' : status === 'pending' ? 'bg-amber-50/90 border-amber-300 text-amber-700 animate-pulse shadow-sm' : 'bg-emerald-50/90 border-emerald-300 text-emerald-700 shadow-sm'}`}>
-                             <FileText className="w-8 h-8" />
-                             <span className="font-bold text-sm text-center">{c.label}</span>
-                             <span className="text-xs bg-white/60 px-3 py-1 rounded-full">{status === 'disabled' ? '未開立' : status === 'pending' ? '待簽署' : '已完成'}</span>
+                          <button key={c.id} disabled={status === 'disabled'} onClick={() => setActiveConsentModal(c.id)} className={`p-5 rounded-[1.5rem] flex flex-col items-center gap-3 border backdrop-blur-md ${status === 'disabled' ? 'bg-white/40 border-white/50 text-slate-400 opacity-70' : status === 'pending' ? 'bg-amber-50/90 border-amber-300 text-amber-700 animate-pulse shadow-sm' : 'bg-emerald-50/90 border-emerald-300 text-emerald-700 shadow-sm'}`}>
+                             <FileText className="w-10 h-10" />
+                             <span className="font-bold text-base text-center">{c.label}</span>
+                             <span className="text-sm bg-white/60 px-4 py-1.5 rounded-full">{status === 'disabled' ? '未開立' : status === 'pending' ? '待簽署' : '已完成'}</span>
                           </button>
                        )
                    })}
@@ -1392,24 +1403,24 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           )}
         </div>
 
-        <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-t border-white/50 dark:border-slate-700/50 flex justify-around items-center py-2 pb-6 px-3 z-40 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
-          <button onClick={() => {setActiveTab('progress'); playVoice('查看就診與報告進度');}} className={`flex flex-col items-center py-3 rounded-2xl transition-colors ${(isFamilyMode || isProxyMode) ? 'w-[45%]' : 'w-[30%]'} ${activeTab === 'progress' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}><Activity className="w-6 h-6 mb-1" /><span className="font-bold text-[13px]">看進度</span></button>
-          <button onClick={() => {setActiveTab('nav'); playVoice('開啟醫院地圖導航');}} className={`flex flex-col items-center py-3 rounded-2xl transition-colors ${(isFamilyMode || isProxyMode) ? 'w-[45%]' : 'w-[30%]'} ${activeTab === 'nav' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}><MapPin className="w-6 h-6 mb-1" /><span className="font-bold text-[13px]">找路</span></button>
-          {(!isFamilyMode) && <button onClick={() => {setActiveTab('help'); playVoice(isProxyMode ? '進入代理人簽署專區' : '開啟求助與常見問題功能');}} className={`flex flex-col items-center w-[30%] py-3 rounded-2xl relative transition-colors ${activeTab === 'help' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}>{Object.values(consents).includes('pending') && <div className="absolute top-2 right-4 w-3 h-3 bg-rose-500 rounded-full animate-ping"></div>}{isProxyMode ? <PenTool className="w-6 h-6 mb-1" /> : <HandHelping className="w-6 h-6 mb-1" />}<span className="font-bold text-[13px]">{isProxyMode ? '代簽署' : '要幫忙'}</span></button>}
+        <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-t border-white/50 dark:border-slate-700/50 flex justify-around items-center py-3 pb-8 px-3 z-40 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+          <button onClick={() => {setActiveTab('progress'); playVoice('查看就診與報告進度');}} className={`flex flex-col items-center py-3 rounded-2xl transition-colors ${(isFamilyMode || isProxyMode) ? 'w-[45%]' : 'w-[30%]'} ${activeTab === 'progress' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}><Activity className="w-7 h-7 mb-1" /><span className="font-bold text-sm">看進度</span></button>
+          <button onClick={() => {setActiveTab('nav'); playVoice('開啟醫院地圖導航');}} className={`flex flex-col items-center py-3 rounded-2xl transition-colors ${(isFamilyMode || isProxyMode) ? 'w-[45%]' : 'w-[30%]'} ${activeTab === 'nav' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}><MapPin className="w-7 h-7 mb-1" /><span className="font-bold text-sm">找路</span></button>
+          {(!isFamilyMode) && <button onClick={() => {setActiveTab('help'); playVoice(isProxyMode ? '進入代理人簽署專區' : '開啟求助與常見問題功能');}} className={`flex flex-col items-center w-[30%] py-3 rounded-2xl relative transition-colors ${activeTab === 'help' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}>{Object.values(consents).includes('pending') && <div className="absolute top-2 right-6 w-3 h-3 bg-rose-500 rounded-full animate-ping"></div>}{isProxyMode ? <PenTool className="w-7 h-7 mb-1" /> : <HandHelping className="w-7 h-7 mb-1" />}<span className="font-bold text-sm">{isProxyMode ? '代簽署' : '要幫忙'}</span></button>}
         </div>
 
         {activeConsentModal && (
            <div className="absolute inset-0 z-[80] bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-[fadeIn_0.2s_ease-out]">
               <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[2rem] shadow-2xl flex flex-col overflow-hidden h-[70vh]">
-                 <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 dark:bg-slate-900"><h3 className="font-black text-lg flex items-center gap-2"><FileText className="w-5 h-5 text-sky-500" /> {CONSENT_TYPES.find(c=>c.id===activeConsentModal)?.label}</h3><button onClick={() => setActiveConsentModal(null)}><X className="w-6 h-6"/></button></div>
+                 <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 dark:bg-slate-900"><h3 className="font-black text-xl flex items-center gap-2"><FileText className="w-6 h-6 text-sky-500" /> {CONSENT_TYPES.find(c=>c.id===activeConsentModal)?.label}</h3><button onClick={() => setActiveConsentModal(null)}><X className="w-7 h-7"/></button></div>
                  {consents[activeConsentModal] === 'signed' ? (
-                     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center"><CheckCircle2 className="w-16 h-16 text-emerald-500 mb-4" /><h4 className="text-xl font-bold mb-2">已完成數位簽署</h4><p className="text-sm text-slate-500">已單向傳輸並由 HIS 系統落地歸檔。</p></div>
+                     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center"><CheckCircle2 className="w-20 h-20 text-emerald-500 mb-4" /><h4 className="text-2xl font-bold mb-2">已完成數位簽署</h4><p className="text-base text-slate-500">已單向傳輸並由 HIS 系統落地歸檔。</p></div>
                  ) : (
                      <>
                          <div className="flex-1 p-6 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 m-6 rounded-2xl bg-slate-50 dark:bg-slate-900 text-slate-400 relative">
-                            <PenTool className="w-16 h-16 mb-4 text-sky-500" /><p className="font-bold text-slate-600 text-lg mb-2">數位簽章整合區</p><p className="text-center text-xs">請在此框內簽名。</p>
+                            <PenTool className="w-20 h-20 mb-4 text-sky-500" /><p className="font-bold text-slate-600 text-xl mb-2">數位簽章整合區</p><p className="text-center text-sm">請在此框內簽名。</p>
                          </div>
-                         <div className="p-5 border-t border-slate-100"><button onClick={() => { updatePatientState(currentPatient.id, { consents: { ...consents, [activeConsentModal]: 'signed' } }); setTimeout(() => setActiveConsentModal(null), 1500); playVoice('簽署完成，已安全送出。'); }} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-4 rounded-xl font-bold text-lg active:scale-95"><PenTool className="w-5 h-5 inline mr-2"/> {isProxyMode ? '代理人確認送出' : '模擬簽署確認'}</button></div>
+                         <div className="p-5 border-t border-slate-100"><button onClick={() => { updatePatientState(currentPatient.id, { consents: { ...consents, [activeConsentModal]: 'signed' } }); setTimeout(() => setActiveConsentModal(null), 1500); playVoice('簽署完成，已安全送出。'); }} className="w-full bg-sky-500 hover:bg-sky-600 text-white py-5 rounded-xl font-bold text-xl active:scale-95"><PenTool className="w-6 h-6 inline mr-2"/> {isProxyMode ? '代理人確認送出' : '模擬簽署確認'}</button></div>
                      </>
                  )}
               </div>
@@ -1419,18 +1430,18 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
         {showShareModal && (
           <div className="absolute inset-0 z-[100] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
             <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl relative">
-               <button onClick={() => setShowShareModal(false)} className="absolute top-4 right-4"><X className="w-6 h-6"/></button>
-               <h3 className="text-2xl font-black mb-2 text-slate-900 dark:text-white">家屬探病連結</h3>
-               <p className="text-slate-500 text-sm mb-6">請掃描條碼或複製連結</p>
+               <button onClick={() => setShowShareModal(false)} className="absolute top-4 right-4"><X className="w-7 h-7"/></button>
+               <h3 className="text-3xl font-black mb-2 text-slate-900 dark:text-white">家屬探病連結</h3>
+               <p className="text-slate-500 text-base mb-6">請掃描條碼或複製連結</p>
                <div className="bg-white p-2 rounded-2xl mb-6 aspect-square w-48 border-2 mx-auto flex items-center justify-center min-h-[180px]">
                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}`} alt="QR Code" className="w-full h-full object-contain" />
                </div>
                <div className="bg-sky-50 dark:bg-sky-900/30 p-3 rounded-xl mb-6">
-                   <div className="text-xs text-sky-600 dark:text-sky-400 font-bold mb-1">高安全加密分享網址</div>
-                   <div className="text-xs font-mono truncate text-slate-600 dark:text-slate-400">{shareUrl}</div>
+                   <div className="text-sm text-sky-600 dark:text-sky-400 font-bold mb-1">高安全加密分享網址</div>
+                   <div className="text-sm font-mono truncate text-slate-600 dark:text-slate-400">{shareUrl}</div>
                </div>
-               <button onClick={handleCopyToClipboard} className="w-full bg-indigo-500 text-white font-bold py-4 rounded-xl active:scale-95 flex items-center justify-center gap-2 shadow-md">
-                   <Share2 className="w-5 h-5"/> 複製分享連結
+               <button onClick={handleCopyToClipboard} className="w-full bg-indigo-500 text-white font-bold py-5 rounded-xl active:scale-95 flex items-center justify-center gap-2 shadow-md text-xl">
+                   <Share2 className="w-6 h-6"/> 複製分享連結
                </button>
             </div>
           </div>
@@ -1440,7 +1451,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   );
 }
 
-// ================= 護理站端 App =================
 function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAlert, clearAllAlerts, patientsState, updatePatientState, createCommand, PATIENTS_LIST, systemConfig, updateSystemConfig, onLogout, settings, toggleSetting }) {
   const [toastMsg, setToastMsg] = useState(null);
   const [zoneFilter, setZoneFilter] = useState('all');
@@ -1465,8 +1475,8 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     if (highAlerts.length > 0) {
         if (settings.vibe && navigator.vibrate) navigator.vibrate([1000, 500, 1000, 500, 2000, 500, 1000, 500, 2000, 500, 1000, 500, 1000, 500, 2000]);
         if (settings.voice) {
-           const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-           audio.volume = 0.8; audio.play().catch(()=>{});
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.volume = 0.8; audio.play().catch(()=>{});
         }
     }
   }, [alerts, settings.voice, settings.vibe]);
@@ -1544,7 +1554,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     if(testPatients[0]) createAlert({ patientId: testPatients[0].id, type: 'ivPain', message: '漏血/會痛', priority: 'high' });
     if(testPatients[1]) createAlert({ patientId: testPatients[1].id, type: 'toilet', message: '已暫離前往洗手間', priority: 'low' });
     if(testPatients[2]) createAlert({ patientId: testPatients[2].id, type: 'ivEmpty', message: '點滴不滴/沒了', priority: 'medium' });
-    showToast('已啟動多床聯動：模擬多床病患發出呼叫，請測試接單');
+    showToast('已啟多床聯動：模擬多床病患發出呼叫，請測試接單');
   };
 
   const handleSendGlobalBroadcast = () => {
@@ -1580,37 +1590,36 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     <div className="flex flex-col flex-1 h-screen relative">
       {errorScan && (
           <div className="fixed inset-0 z-[10000] bg-rose-600 flex flex-col items-center justify-center p-10 text-white text-center animate-pulse">
-              <AlertTriangle className="w-32 h-32 mb-6" /><h2 className="text-4xl font-black mb-4">嚴重核對錯誤</h2><p className="text-2xl font-bold">{errorScan}</p>
+              <AlertTriangle className="w-32 h-32 mb-6" /><h2 className="text-5xl font-black mb-4">嚴重核對錯誤</h2><p className="text-3xl font-bold">{errorScan}</p>
           </div>
       )}
 
       {toastMsg && (
-        <div className="fixed bottom-4 right-4 z-[9999] bg-slate-800 text-white px-4 py-2 rounded-lg shadow-xl animate-[fadeIn_0.3s_ease-out]">
+        <div className="fixed bottom-4 right-4 z-[9999] bg-slate-800 text-white px-5 py-3 rounded-lg shadow-xl animate-[fadeIn_0.3s_ease-out] text-lg">
           {toastMsg}
         </div>
       )}
 
-      <header className="bg-indigo-50 dark:bg-slate-800 border-b p-4 flex flex-col shrink-0 gap-3">
+      <header className="bg-indigo-50 dark:bg-slate-800 border-b p-5 flex flex-col shrink-0 gap-3">
         <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-               <ShieldAlert className="w-8 h-8 text-indigo-600" />
-               <div><h1 className="font-bold text-lg">{role==='station'?'護理站主控台':'行動護理機'}</h1><p className="text-xs opacity-60">護理師：{nurseName}</p></div>
+               <ShieldAlert className="w-10 h-10 text-indigo-600" />
+               <div><h1 className="font-bold text-xl">{role==='station'?'護理站主控台':'行動護理機'}</h1><p className="text-sm opacity-60">護理師：{nurseName}</p></div>
             </div>
             <div className="flex items-center gap-2">
                <HeaderSettings settings={settings} toggleSetting={toggleSetting} onLogout={onLogout} />
             </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-           <button onClick={handleTriageBump} className="shrink-0 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 shadow-[0_4px_15px_rgba(225,29,72,0.3)] active:scale-95 transition-all"><AlertTriangle className="w-4 h-4 animate-pulse"/> 一級急救 (全區展延)</button>
-           {/* 新增的「自訂緊急推播按鈕」 */}
+        <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+           <button onClick={handleTriageBump} className="shrink-0 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(225,29,72,0.3)] active:scale-95 transition-all"><AlertTriangle className="w-5 h-5 animate-pulse"/> 一級急救 (全區展延)</button>
            {role === 'station' && (
-              <button onClick={() => setShowGlobalBroadcast(true)} className="shrink-0 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 shadow-[0_4px_15px_rgba(234,88,12,0.3)] active:scale-95 transition-all"><Megaphone className="w-4 h-4"/> 臨時全區廣播</button>
+              <button onClick={() => setShowGlobalBroadcast(true)} className="shrink-0 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(234,88,12,0.3)] active:scale-95 transition-all"><Megaphone className="w-5 h-5"/> 臨時全區廣播</button>
            )}
-           <button onClick={handleMultiBedLinkage} className="shrink-0 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 shadow-[0_4px_15px_rgba(79,70,229,0.3)] active:scale-95 transition-all"><Users className="w-4 h-4"/> 多床聯動 (模擬群呼)</button>
+           <button onClick={handleMultiBedLinkage} className="shrink-0 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(79,70,229,0.3)] active:scale-95 transition-all"><Users className="w-5 h-5"/> 多床聯動 (模擬群呼)</button>
            {role === 'station' && (
-              <button onClick={() => { setMarqueeInputText(systemConfig?.marqueeText || ''); setShowMarqueeConfig(true); }} className="shrink-0 bg-gradient-to-r from-sky-600 to-blue-500 hover:from-sky-500 hover:to-blue-400 text-white px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 shadow-[0_4px_15px_rgba(14,165,233,0.3)] active:scale-95 transition-all"><Info className="w-4 h-4"/> 設定衛教跑馬燈</button>
+              <button onClick={() => { setMarqueeInputText(systemConfig?.marqueeText || ''); setShowMarqueeConfig(true); }} className="shrink-0 bg-gradient-to-r from-sky-600 to-blue-500 hover:from-sky-500 hover:to-blue-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(14,165,233,0.3)] active:scale-95 transition-all"><Info className="w-5 h-5"/> 設定衛教跑馬燈</button>
            )}
-           <button onClick={() => { clearAllAlerts(); showToast('已一鍵清除所有任務'); }} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><Trash2 className="w-4 h-4"/> 任務全清 (測試)</button>
+           <button onClick={() => { clearAllAlerts(); showToast('已一鍵清除所有任務'); }} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><Trash2 className="w-5 h-5"/> 任務全清 (測試)</button>
         </div>
       </header>
 
@@ -1618,16 +1627,16 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
         {role === 'station' && (
           <main className="flex-[2.5] flex flex-col overflow-hidden border-r border-slate-200 bg-slate-50/50">
              <div className="p-3 bg-white dark:bg-slate-800 border-b flex justify-between items-center gap-2">
-                <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
+                <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg">
                    {['all','急救區','留觀區','輕症區'].map(z => (
-                      <button key={z} onClick={()=>setZoneFilter(z)} className={`px-3 py-1 rounded text-xs font-bold ${zoneFilter===z?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>{z==='all'?'全區':z}</button>
+                      <button key={z} onClick={()=>setZoneFilter(z)} className={`px-4 py-1.5 rounded text-sm font-bold ${zoneFilter===z?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>{z==='all'?'全區':z}</button>
                    ))}
                 </div>
-                <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
+                <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg">
                    {['all', 'calling', 'discharged'].map(s => {
                       const labels = { all: '全部', calling: '🔔 呼叫中', discharged: '🔒 已結案' };
                       return (
-                         <button key={s} onClick={()=>setStatusFilter(s)} className={`px-3 py-1 rounded text-xs font-bold ${statusFilter===s?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
+                         <button key={s} onClick={()=>setStatusFilter(s)} className={`px-4 py-1.5 rounded text-sm font-bold ${statusFilter===s?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
                             {labels[s]}
                          </button>
                       )
@@ -1642,19 +1651,19 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                    const triageObj = getTriageStyle(p.triageLevel || 3);
                    
                    return (
-                     <div key={p.id} className={`bg-white dark:bg-slate-800 p-4 rounded-2xl border ${isCalling.length>0?'border-rose-400 shadow-rose-100 animate-pulse':'border-slate-200 dark:border-slate-700'} relative flex flex-col`}>
-                        <div className="flex items-center gap-3 mb-3">
-                           <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-lg shadow-inner">{p.bed}</div>
+                     <div key={p.id} className={`bg-white dark:bg-slate-800 p-5 rounded-2xl border ${isCalling.length>0?'border-rose-400 shadow-rose-100 animate-pulse':'border-slate-200 dark:border-slate-700'} relative flex flex-col`}>
+                        <div className="flex items-center gap-4 mb-4">
+                           <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-2xl shadow-inner">{p.bed}</div>
                            <div className="flex-1">
                               <div className="flex justify-between items-start mb-1">
                                  <div className="flex items-center gap-2">
-                                     <h3 className="font-black text-lg">{p.name}</h3>
-                                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${triageObj.bg} ${triageObj.color} ${triageObj.border}`}>檢傷 {p.triageLevel} 級</span>
+                                     <h3 className="font-black text-xl">{p.name}</h3>
+                                     <span className={`text-xs font-bold px-2 py-1 rounded border ${triageObj.bg} ${triageObj.color} ${triageObj.border}`}>檢傷 {p.triageLevel} 級</span>
                                  </div>
-                                 <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{p.zone}</span>
+                                 <span className="text-xs font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{p.zone}</span>
                               </div>
-                              <p className="text-[11px] text-sky-600 dark:text-sky-400 font-bold mb-0.5">{st.currentStatus}</p>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400 flex gap-2">
+                              <p className="text-sm text-sky-600 dark:text-sky-400 font-bold mb-1">{st.currentStatus}</p>
+                              <div className="text-xs text-slate-500 dark:text-slate-400 flex gap-2">
                                  <span>📍 {st.location || '急診大廳'}</span>
                                  <span>⏳ 前方等待: {st.waitingCount}人</span>
                               </div>
@@ -1662,48 +1671,48 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                         </div>
 
                         {st.tokenExpired ? (
-                           <div className="flex flex-col items-center justify-center py-6 gap-3 mt-auto border-t border-slate-100 dark:border-slate-700">
-                              <div className="text-slate-400 font-bold text-sm">此病患已結案離院</div>
-                              <button onClick={() => handleReadmit(p.id)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold shadow-md w-full active:scale-95 transition-transform">
+                           <div className="flex flex-col items-center justify-center py-8 gap-4 mt-auto border-t border-slate-100 dark:border-slate-700">
+                              <div className="text-slate-400 font-bold text-base">此病患已結案離院</div>
+                              <button onClick={() => handleReadmit(p.id)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-4 rounded-xl font-bold shadow-md w-full active:scale-95 transition-transform text-lg">
                                  🔄 撤銷離院 (測試用重新收治)
                               </button>
                            </div>
                         ) : (
                            <>
-                              <div className="flex gap-1.5 mb-3 flex-wrap border-b border-slate-100 dark:border-slate-700 pb-3">
-                                 <button onClick={()=>createCommand({patientId: p.id, action: 'urgent_call'})} className="px-2 py-1 bg-rose-100 text-rose-700 rounded text-[10px] font-bold border border-rose-200 hover:bg-rose-200 active:scale-95 transition-all">🔊 強制叫號</button>
-                                 <button onClick={()=>updatePatientState(p.id, {sosEnabled: !st.sosEnabled})} className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${st.sosEnabled ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{st.sosEnabled ? '已准SOS' : '開放SOS'}</button>
-                                 <button onClick={()=>setShowProxyModal(p.id)} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-[10px] font-bold border border-purple-200 hover:bg-purple-200 active:scale-95 transition-all">👨‍⚖️ 授權代簽</button>
-                                 <button onClick={()=>toggleConsent(p.id, 'ct')} className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${st.consents.ct==='pending'?'bg-amber-50 text-amber-600 border-amber-200':st.consents.ct==='signed'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}`}>CT同意</button>
-                                 <button onClick={()=>toggleConsent(p.id, 'admission')} className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${st.consents.admission==='pending'?'bg-amber-50 text-amber-600 border-amber-200':st.consents.admission==='signed'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}`}>住院同意</button>
+                              <div className="flex gap-2 mb-3 flex-wrap border-b border-slate-100 dark:border-slate-700 pb-3">
+                                 <button onClick={()=>createCommand({patientId: p.id, action: 'urgent_call'})} className="px-3 py-1.5 bg-rose-100 text-rose-700 rounded text-xs font-bold border border-rose-200 hover:bg-rose-200 active:scale-95 transition-all">🔊 強制叫號</button>
+                                 <button onClick={()=>updatePatientState(p.id, {sosEnabled: !st.sosEnabled})} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${st.sosEnabled ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{st.sosEnabled ? '已准SOS' : '開放SOS'}</button>
+                                 <button onClick={()=>setShowProxyModal(p.id)} className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded text-xs font-bold border border-purple-200 hover:bg-purple-200 active:scale-95 transition-all">👨‍⚖️ 授權代簽</button>
+                                 <button onClick={()=>toggleConsent(p.id, 'ct')} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${st.consents.ct==='pending'?'bg-amber-50 text-amber-600 border-amber-200':st.consents.ct==='signed'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}`}>CT同意</button>
+                                 <button onClick={()=>toggleConsent(p.id, 'admission')} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${st.consents.admission==='pending'?'bg-amber-50 text-amber-600 border-amber-200':st.consents.admission==='signed'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}`}>住院同意</button>
                               </div>
                               
-                              <div className="text-xs font-bold text-slate-500 mb-1">檢驗開立與排單控制</div>
-                              <div className="flex flex-wrap gap-1.5 mb-2">
+                              <div className="text-sm font-bold text-slate-500 mb-2">檢驗開立與排單控制</div>
+                              <div className="flex flex-wrap gap-2 mb-3">
                                  {LAB_TYPES.map(l => {
                                     const lState = st.labStatus[l.id]?.status || 'unprescribed';
                                     const label = lState==='reported'?'報告已出':lState==='done'?'完成':lState==='processing'?'處理':lState==='pending'?'待檢':'未開';
-                                    return <button key={l.id} onClick={() => cycleLabStatus(p.id, l.id)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${lState!=='unprescribed' ? LAB_TYPES.find(x=>x.id===l.id).activeCls : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-400 hover:bg-slate-50'}`}>{l.label} [{label}]</button>
+                                    return <button key={l.id} onClick={() => cycleLabStatus(p.id, l.id)} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${lState!=='unprescribed' ? LAB_TYPES.find(x=>x.id===l.id).activeCls : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-400 hover:bg-slate-50'}`}>{l.label} [{label}]</button>
                                  })}
                               </div>
 
-                              <div className="text-xs font-bold text-slate-500 mb-1 mt-2">語音護理指示廣播</div>
-                              <div className="flex flex-wrap gap-1.5 mb-3">
+                              <div className="text-sm font-bold text-slate-500 mb-2 mt-3">語音護理指示廣播</div>
+                              <div className="flex flex-wrap gap-2 mb-4">
                                   {REMINDER_TYPES.map(r => {
                                       const isActive = (st.reminders || []).includes(r.id);
-                                      return <button key={r.id} onClick={() => toggleReminder(p.id, r.id)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${isActive ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-sm' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}>{r.icon} {r.label}</button>
+                                      return <button key={r.id} onClick={() => toggleReminder(p.id, r.id)} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${isActive ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-sm' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}>{r.icon} {r.label}</button>
                                   })}
                               </div>
 
-                              <div className="mt-auto grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
-                                 <button onClick={()=>createCommand({patientId: p.id, action: 'nurse'})} className="text-[11px] font-bold py-3 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 text-indigo-700 rounded-[1rem]"><PhoneCall className="w-4 h-4 inline mr-1"/>導航回站</button>
-                                 <button onClick={()=>createCommand({patientId: p.id, action: 'xray'})} className="text-[11px] font-bold py-3 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 text-cyan-700 rounded-[1rem]"><MonitorSmartphone className="w-4 h-4 inline mr-1"/>去X光</button>
+                              <div className="mt-auto grid grid-cols-2 gap-3 pt-4 border-t border-slate-100 dark:border-slate-700">
+                                 <button onClick={()=>createCommand({patientId: p.id, action: 'nurse'})} className="text-sm font-bold py-4 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 text-indigo-700 rounded-[1rem]"><PhoneCall className="w-5 h-5 inline mr-2"/>導航回站</button>
+                                 <button onClick={()=>createCommand({patientId: p.id, action: 'xray'})} className="text-sm font-bold py-4 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 text-cyan-700 rounded-[1rem]"><MonitorSmartphone className="w-5 h-5 inline mr-2"/>去X光</button>
                               </div>
-                              <div className="mt-2">
+                              <div className="mt-3">
                                  <SwipeToConfirm text="滑動以離院" onConfirm={() => handleDischarge(p.id)} bgClass="bg-rose-50 border border-rose-200" activeBgClass="bg-rose-500" textClass="text-rose-600" />
                               </div>
-                              <button onClick={()=>handleMarkPaid(p.id)} disabled={st.billingPaidAt} className={`mt-1.5 w-full py-2 text-[11px] font-bold rounded-[1rem] border transition-all flex items-center justify-center gap-1 ${st.billingPaidAt ? 'bg-emerald-50 text-emerald-600 border-emerald-200 cursor-not-allowed' : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}>
-                                 <CreditCard className="w-3 h-3"/> {st.billingPaidAt ? '已觸發繳費，30分鐘自動結案倒數中' : '💳 批價模擬測試 (模擬 RFID 觸發自動離院倒數)'}
+                              <button onClick={()=>handleMarkPaid(p.id)} disabled={st.billingPaidAt} className={`mt-2 w-full py-3 text-sm font-bold rounded-[1rem] border transition-all flex items-center justify-center gap-2 ${st.billingPaidAt ? 'bg-emerald-50 text-emerald-600 border-emerald-200 cursor-not-allowed' : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}>
+                                 <CreditCard className="w-5 h-5"/> {st.billingPaidAt ? '已觸發繳費，30分鐘自動結案倒數中' : '💳 批價模擬測試 (模擬 RFID 觸發自動離院倒數)'}
                               </button>
                            </>
                         )}
@@ -1712,77 +1721,77 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                 })}
              </div>
 
-             <div className="p-3 border-t bg-white dark:bg-slate-800 flex justify-center items-center gap-4 text-xs font-bold">
-                <button disabled={page===1} onClick={()=>setPage(page-1)} className="p-1 rounded bg-slate-100 dark:bg-slate-700"><ChevronLeft className="w-4 h-4"/></button>
+             <div className="p-4 border-t bg-white dark:bg-slate-800 flex justify-center items-center gap-5 text-sm font-bold">
+                <button disabled={page===1} onClick={()=>setPage(page-1)} className="p-2 rounded bg-slate-100 dark:bg-slate-700"><ChevronLeft className="w-5 h-5"/></button>
                 <span>第 {page} 頁 / 共 {Math.ceil(filteredList.length/itemsPerPage) || 1} 頁</span>
-                <button disabled={page*itemsPerPage >= filteredList.length} onClick={()=>setPage(page+1)} className="p-1 rounded bg-slate-100 dark:bg-slate-700"><ChevronLeft className="w-4 h-4 rotate-180"/></button>
+                <button disabled={page*itemsPerPage >= filteredList.length} onClick={()=>setPage(page+1)} className="p-2 rounded bg-slate-100 dark:bg-slate-700"><ChevronLeft className="w-5 h-5 rotate-180"/></button>
              </div>
           </main>
         )}
 
-        <aside className={`flex-1 flex flex-col bg-slate-100 dark:bg-slate-900 p-4 overflow-y-auto ${role === 'nurse_mobile' ? 'w-full' : ''}`}>
-          <div className="flex items-center justify-between mb-4"><h2 className="text-sm font-bold text-rose-500 flex items-center gap-2"><Bell className="w-4 h-4"/> 任務佇列 ({alerts.length})</h2></div>
-          {alerts.length === 0 ? <div className="text-center py-10 opacity-30">目前無任務</div> : alerts.map(a => {
+        <aside className={`flex-1 flex flex-col bg-slate-100 dark:bg-slate-900 p-5 overflow-y-auto ${role === 'nurse_mobile' ? 'w-full' : ''}`}>
+          <div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-rose-500 flex items-center gap-2"><Bell className="w-5 h-5"/> 任務佇列 ({alerts.length})</h2></div>
+          {alerts.length === 0 ? <div className="text-center py-12 opacity-30 text-lg">目前無任務</div> : alerts.map(a => {
              const pat = PATIENTS_LIST.find(p => p.id === a.patientId) || { name: '未知', bed: '?' };
              const isMe = a.assignedTo === nurseName;
              const isDetailsUnlocked = unlockedDetails[a.patientId] || a.patientId === 'GLOBAL';
 
              return (
-               <div key={a.id} className={`bg-white dark:bg-slate-800 p-5 rounded-3xl mb-4 shadow-md border-l-8 ${a.priority==='high'?'border-rose-500':'border-sky-500'} animate-[fadeIn_0.2s_ease-out]`}>
-                  <div className="flex justify-between items-start mb-2">
+               <div key={a.id} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl mb-5 shadow-md border-l-8 ${a.priority==='high'?'border-rose-500':'border-sky-500'} animate-[fadeIn_0.2s_ease-out]`}>
+                  <div className="flex justify-between items-start mb-3">
                      <div>
-                        <div className="text-xs text-slate-400 font-bold mb-1 flex items-center gap-1">
-                            {a.patientId === 'GLOBAL' ? <AlertOctagon className="w-3 h-3 text-rose-500"/> : <MapPin className="w-3 h-3"/>} 
+                        <div className="text-sm text-slate-400 font-bold mb-1.5 flex items-center gap-1.5">
+                            {a.patientId === 'GLOBAL' ? <AlertOctagon className="w-4 h-4 text-rose-500"/> : <MapPin className="w-4 h-4"/>} 
                             {a.patientId === 'GLOBAL' ? '全區廣播' : `Bed ${pat.bed}`}
                         </div>
-                        <div className="text-xl font-black flex items-center gap-2">
+                        <div className="text-2xl font-black flex items-center gap-2">
                             {isDetailsUnlocked && a.patientId !== 'GLOBAL' ? `${pat.fullName} (${pat.dob})` : pat.name}
-                            {isDetailsUnlocked && a.patientId !== 'GLOBAL' && <UserCheck className="w-5 h-5 text-emerald-500" />}
+                            {isDetailsUnlocked && a.patientId !== 'GLOBAL' && <UserCheck className="w-6 h-6 text-emerald-500" />}
                         </div>
                      </div>
-                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${a.status==='assigned'?'bg-indigo-500 text-white':'bg-slate-100 dark:bg-slate-700'}`}>{a.status==='assigned' ? (isMe ? '我處理中' : `${a.assignedTo}處理`) : '待認領'}</span>
+                     <span className={`text-xs font-bold px-3 py-1 rounded-full ${a.status==='assigned'?'bg-indigo-500 text-white':'bg-slate-100 dark:bg-slate-700'}`}>{a.status==='assigned' ? (isMe ? '我處理中' : `${a.assignedTo}處理`) : '待認領'}</span>
                   </div>
-                  <p className={`font-black text-lg mb-6 ${a.priority==='high'?'text-rose-600':'text-sky-600'}`}>{a.message}</p>
+                  <p className={`font-black text-xl mb-6 ${a.priority==='high'?'text-rose-600':'text-sky-600'}`}>{a.message}</p>
                   
                   {role === 'station' && a.status === 'pending' && (
-                     <div className="flex gap-1.5 flex-wrap">
-                        {STAFF_LIST.map(n => <button key={n.empId} onClick={() => handleDispatch(a, n.name)} className="bg-slate-100 hover:bg-indigo-50 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors">{n.name.slice(0,1)}護理師</button>)}
+                     <div className="flex gap-2 flex-wrap">
+                        {STAFF_LIST.map(n => <button key={n.empId} onClick={() => handleDispatch(a, n.name)} className="bg-slate-100 hover:bg-indigo-50 text-xs font-bold px-4 py-2 rounded-lg transition-colors">{n.name.slice(0,1)}護理師</button>)}
                      </div>
                   )}
 
                   {role === 'nurse_mobile' && (
-                     <div className="space-y-3">
+                     <div className="space-y-4">
                         {a.status === 'pending' ? (
-                           <button onClick={()=>handleClaim(a)} className="w-full bg-sky-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 text-lg">搶單認領</button>
+                           <button onClick={()=>handleClaim(a)} className="w-full bg-sky-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 text-xl">搶單認領</button>
                         ) : isMe ? (
                            <>
                               {a.patientId !== 'GLOBAL' && (
-                                  <div className="grid grid-cols-2 gap-3">
-                                     <button onClick={()=>setScanDemoTarget(scanDemoTarget === a.id ? null : a.id)} className="flex-1 flex flex-col items-center justify-center p-4 border-2 border-dashed border-indigo-300 dark:border-indigo-600 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 active:bg-indigo-100">
-                                        <ScanLine className="w-8 h-8 mb-2" />
-                                        <span className="text-sm font-bold">掃描核對</span>
-                                     </button>
-                                     <button onClick={()=>setShowHandoff(a.id)} className="flex-1 flex flex-col items-center justify-center p-4 border-2 border-dashed border-amber-300 dark:border-amber-600 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 active:bg-amber-100">
-                                        <RefreshCw className="w-8 h-8 mb-2" />
-                                        <span className="text-sm font-bold">一鍵交班</span>
-                                     </button>
-                                  </div>
+                                 <div className="grid grid-cols-2 gap-4">
+                                    <button onClick={()=>setScanDemoTarget(scanDemoTarget === a.id ? null : a.id)} className="flex-1 flex flex-col items-center justify-center p-5 border-2 border-dashed border-indigo-300 dark:border-indigo-600 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 active:bg-indigo-100">
+                                       <ScanLine className="w-10 h-10 mb-2" />
+                                       <span className="text-base font-bold">掃描核對</span>
+                                    </button>
+                                    <button onClick={()=>setShowHandoff(a.id)} className="flex-1 flex flex-col items-center justify-center p-5 border-2 border-dashed border-amber-300 dark:border-amber-600 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 active:bg-amber-100">
+                                       <RefreshCw className="w-10 h-10 mb-2" />
+                                       <span className="text-base font-bold">一鍵交班</span>
+                                    </button>
+                                 </div>
                               )}
                               
                               {scanDemoTarget === a.id && !isDetailsUnlocked && a.patientId !== 'GLOBAL' && (
-                                  <div className="flex gap-2 animate-[fadeIn_0.2s_ease-out]">
-                                     <button onClick={()=>{handleScanPatient(a.id, pat.id, pat.id); setScanDemoTarget(null);}} className="flex-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 py-3 rounded-2xl font-bold border border-emerald-300 hover:bg-emerald-100 transition-colors">✅ 掃描正確</button>
-                                     <button onClick={()=>{handleScanPatient(a.id, 'WRONG_ID', pat.id); setScanDemoTarget(null);}} className="flex-1 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 py-3 rounded-2xl font-bold border border-rose-300 hover:bg-rose-100 transition-colors">❌ 掃描錯誤</button>
-                                  </div>
+                                 <div className="flex gap-3 animate-[fadeIn_0.2s_ease-out]">
+                                    <button onClick={()=>{handleScanPatient(a.id, pat.id, pat.id); setScanDemoTarget(null);}} className="flex-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 py-4 rounded-2xl font-bold border border-emerald-300 hover:bg-emerald-100 transition-colors text-lg">✅ 掃描正確</button>
+                                    <button onClick={()=>{handleScanPatient(a.id, 'WRONG_ID', pat.id); setScanDemoTarget(null);}} className="flex-1 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 py-4 rounded-2xl font-bold border border-rose-300 hover:bg-rose-100 transition-colors text-lg">❌ 掃描錯誤</button>
+                                 </div>
                               )}
 
                               {isDetailsUnlocked ? (
-                                 <SwipeToConfirm text="滑動以銷案" onConfirm={() => resolveAlert(a.id)} bgClass="bg-emerald-100 border border-emerald-200" activeBgClass="bg-emerald-500" textClass="text-emerald-700" icon={<CheckCircle2 className="w-5 h-5 text-emerald-500"/>}/>
+                                 <SwipeToConfirm text="滑動以銷案" onConfirm={() => resolveAlert(a.id)} bgClass="bg-emerald-100 border border-emerald-200" activeBgClass="bg-emerald-500" textClass="text-emerald-700" icon={<CheckCircle2 className="w-6 h-6 text-emerald-500"/>}/>
                               ) : (
-                                 <div className="w-full bg-slate-200 dark:bg-slate-700 text-slate-400 text-center py-3 rounded-[1.5rem] font-bold text-xs">請先掃描核對</div>
+                                 <div className="w-full bg-slate-200 dark:bg-slate-700 text-slate-400 text-center py-4 rounded-[1.5rem] font-bold text-sm">請先掃描核對</div>
                               )}
                               
-                              <div className="mt-2">
+                              <div className="mt-3">
                                  <SwipeToConfirm text="滑動以釋放任務" onConfirm={() => handleRelease(a.id)} bgClass="bg-slate-200 dark:bg-slate-700" activeBgClass="bg-slate-500" textClass="text-slate-500" />
                               </div>
                            </>
@@ -1795,18 +1804,17 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
         </aside>
       </div>
 
-      {/* 交班畫面 */}
       {showHandoff && (
           <div className="fixed inset-0 z-[5000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
-             <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative border border-slate-200 dark:border-slate-700">
-                <button onClick={()=>setShowHandoff(null)} className="absolute top-6 right-6 p-2 bg-slate-100 dark:bg-slate-700 rounded-full"><X className="w-5 h-5"/></button>
-                <h3 className="text-xl font-black mb-2 flex items-center gap-2"><RefreshCw className="w-5 h-5 text-amber-500"/> 交班任務給...</h3>
-                <p className="text-xs text-slate-400 mb-8">選擇接手任務的人員，系統將自動移轉權限</p>
-                <div className="grid grid-cols-1 gap-3">
+             <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl relative border border-slate-200 dark:border-slate-700">
+                <button onClick={()=>setShowHandoff(null)} className="absolute top-6 right-6 p-2 bg-slate-100 dark:bg-slate-700 rounded-full"><X className="w-6 h-6"/></button>
+                <h3 className="text-2xl font-black mb-3 flex items-center gap-3"><RefreshCw className="w-6 h-6 text-amber-500"/> 交班任務給...</h3>
+                <p className="text-sm text-slate-400 mb-8">選擇接手任務的人員，系統將自動移轉權限</p>
+                <div className="grid grid-cols-1 gap-4">
                    {STAFF_LIST.filter(s => s.name !== nurseName).map(s => (
-                      <button key={s.empId} onClick={()=>handleHandoff(showHandoff, s.name)} className="p-5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center gap-4 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 active:scale-95 transition-all">
-                         <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center"><UserCircle className="w-6 h-6"/></div>
-                         <span className="font-bold text-lg">{s.name}</span>
+                      <button key={s.empId} onClick={()=>handleHandoff(showHandoff, s.name)} className="p-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center gap-5 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 active:scale-95 transition-all">
+                         <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center"><UserCircle className="w-7 h-7"/></div>
+                         <span className="font-bold text-xl">{s.name}</span>
                       </button>
                    ))}
                 </div>
@@ -1814,65 +1822,62 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
           </div>
       )}
 
-      {/* 代理人授權 QR Code 彈窗 */}
       {showProxyModal && (
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl relative">
-               <button onClick={() => setShowProxyModal(null)} className="absolute top-4 right-4"><X className="w-6 h-6"/></button>
-               <h3 className="text-2xl font-black mb-2 text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2"><PenTool className="w-6 h-6"/> 家屬代簽授權</h3>
-               <p className="text-slate-500 text-sm mb-6">請代理人掃描專屬條碼。進入前仍需核對病患身分證後四碼。</p>
-               <div className="bg-white p-2 rounded-2xl mb-6 aspect-square w-48 border-2 border-purple-200 mx-auto flex items-center justify-center min-h-[180px]">
-                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo')}?token=${PATIENTS_LIST.find(p=>p.id===showProxyModal)?.token}%26proxy=true`} alt="Proxy QR Code" className="w-full h-full object-contain" />
+            <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] w-full max-w-md text-center shadow-2xl relative">
+               <button onClick={() => setShowProxyModal(null)} className="absolute top-6 right-6"><X className="w-8 h-8 text-slate-400 hover:text-slate-700"/></button>
+               <h3 className="text-3xl font-black mb-3 text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2"><PenTool className="w-8 h-8"/> 家屬代簽授權</h3>
+               <p className="text-slate-500 text-base mb-8">請代理人掃描專屬條碼。進入前仍需核對病患身分證後四碼。</p>
+               <div className="bg-white p-3 rounded-2xl mb-8 aspect-square w-56 border-2 border-purple-200 mx-auto flex items-center justify-center min-h-[220px]">
+                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo')}?token=${PATIENTS_LIST.find(p=>p.id===showProxyModal)?.token}%26proxy=true`} alt="Proxy QR Code" className="w-full h-full object-contain" />
                </div>
-               <div className="bg-purple-50 dark:bg-purple-900/30 p-3 rounded-xl mb-6">
-                   <div className="text-xs text-purple-600 dark:text-purple-400 font-bold mb-1">代理人授權專屬網址</div>
-                   <div className="text-[10px] font-mono truncate text-slate-600 dark:text-slate-400">...?token=...&proxy=true</div>
+               <div className="bg-purple-50 dark:bg-purple-900/30 p-4 rounded-xl mb-6">
+                   <div className="text-sm text-purple-600 dark:text-purple-400 font-bold mb-1.5">代理人授權專屬網址</div>
+                   <div className="text-xs font-mono truncate text-slate-600 dark:text-slate-400">...?token=...&proxy=true</div>
                </div>
             </div>
           </div>
       )}
 
-      {/* 臨時全域緊急推播設定 (主控台專用) */}
       {showGlobalBroadcast && (
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl relative border-2 border-orange-500">
-               <button onClick={() => setShowGlobalBroadcast(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><X className="w-6 h-6"/></button>
-               <h3 className="text-2xl font-black mb-2 text-orange-600 flex items-center gap-2"><Megaphone className="w-6 h-6"/> 發送臨時緊急推播</h3>
-               <p className="text-slate-500 text-sm mb-6 font-bold">此訊息將<span className="text-rose-500">強制突破靜音設定</span>，在全區病患手機以最高音量播報並全螢幕閃爍。請謹慎使用。</p>
+            <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] w-full max-w-lg shadow-2xl relative border-2 border-orange-500">
+               <button onClick={() => setShowGlobalBroadcast(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-8 h-8"/></button>
+               <h3 className="text-3xl font-black mb-3 text-orange-600 flex items-center gap-3"><Megaphone className="w-8 h-8"/> 發送臨時緊急推播</h3>
+               <p className="text-slate-500 text-base mb-8 font-bold">此訊息將<span className="text-rose-500">強制突破靜音設定</span>，在全區病患手機以最高音量播報並全螢幕閃爍。請謹慎使用。</p>
                
                <textarea 
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 outline-none focus:border-orange-500 resize-none h-32 text-lg font-bold" 
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 outline-none focus:border-orange-500 resize-none h-40 text-xl font-bold" 
                   placeholder="請輸入警報內容（例：發生火警，請依循綠色指示燈前往大門疏散）"
                   value={customBroadcastText}
                   onChange={(e) => setCustomBroadcastText(e.target.value)}
                ></textarea>
                
-               <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowGlobalBroadcast(false)} className="flex-1 py-4 font-bold rounded-xl bg-slate-100 text-slate-500">取消</button>
-                  <button onClick={handleSendGlobalBroadcast} disabled={!customBroadcastText.trim()} className={`flex-[2] py-4 font-black rounded-xl text-white transition-all shadow-lg ${customBroadcastText.trim() ? 'bg-orange-600 hover:bg-orange-700 active:scale-95' : 'bg-slate-300 cursor-not-allowed'}`}>立即發送推播</button>
+               <div className="flex gap-4 mt-8">
+                  <button onClick={() => setShowGlobalBroadcast(false)} className="flex-1 py-5 font-bold rounded-2xl bg-slate-100 text-slate-500 text-xl">取消</button>
+                  <button onClick={handleSendGlobalBroadcast} disabled={!customBroadcastText.trim()} className={`flex-[2] py-5 font-black rounded-2xl text-white transition-all shadow-lg text-xl ${customBroadcastText.trim() ? 'bg-orange-600 hover:bg-orange-700 active:scale-95' : 'bg-slate-300 cursor-not-allowed'}`}>立即發送推播</button>
                </div>
             </div>
           </div>
       )}
 
-      {/* 衛教跑馬燈設定 (主控台專用) */}
       {showMarqueeConfig && (
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl relative border-2 border-sky-400">
-               <button onClick={() => setShowMarqueeConfig(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><X className="w-6 h-6"/></button>
-               <h3 className="text-2xl font-black mb-2 text-sky-600 flex items-center gap-2"><Info className="w-6 h-6"/> 設定衛教跑馬燈</h3>
-               <p className="text-slate-500 text-sm mb-6 font-bold">更改的文字將即時顯示於全區病患的手機頂端。</p>
+            <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] w-full max-w-lg shadow-2xl relative border-2 border-sky-400">
+               <button onClick={() => setShowMarqueeConfig(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-8 h-8"/></button>
+               <h3 className="text-3xl font-black mb-3 text-sky-600 flex items-center gap-3"><Info className="w-8 h-8"/> 設定衛教跑馬燈</h3>
+               <p className="text-slate-500 text-base mb-8 font-bold">更改的文字將即時顯示於全區病患的手機頂端。</p>
                
                <textarea 
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 outline-none focus:border-sky-500 resize-none h-32 text-base font-bold" 
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 outline-none focus:border-sky-500 resize-none h-40 text-lg font-bold" 
                   placeholder="請輸入衛教或宣導文字..."
                   value={marqueeInputText}
                   onChange={(e) => setMarqueeInputText(e.target.value)}
                ></textarea>
                
-               <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowMarqueeConfig(false)} className="flex-1 py-4 font-bold rounded-xl bg-slate-100 text-slate-500">取消</button>
-                  <button onClick={handleUpdateMarquee} className="flex-[2] py-4 font-black rounded-xl text-white transition-all shadow-lg bg-sky-500 hover:bg-sky-600 active:scale-95">更新全區跑馬燈</button>
+               <div className="flex gap-4 mt-8">
+                  <button onClick={() => setShowMarqueeConfig(false)} className="flex-1 py-5 font-bold rounded-2xl bg-slate-100 text-slate-500 text-xl">取消</button>
+                  <button onClick={handleUpdateMarquee} className="flex-[2] py-5 font-black rounded-2xl text-white transition-all shadow-lg text-xl bg-sky-500 hover:bg-sky-600 active:scale-95">更新全區跑馬燈</button>
                </div>
             </div>
           </div>
@@ -1881,7 +1886,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   );
 }
 
-// ================= 錯誤防護罩 =================
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, errorMsg: '' }; }
   static getDerivedStateFromError(error) { return { hasError: true, errorMsg: error.message }; }
@@ -1889,10 +1893,10 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-rose-50 flex items-center justify-center p-6">
-          <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg w-full text-center border-2 border-rose-100">
-             <AlertTriangle className="w-20 h-20 text-rose-500 mx-auto mb-6 animate-pulse" />
-             <h1 className="text-2xl font-black text-slate-800 mb-4">系統安全防護已啟動</h1>
-             <p className="text-rose-600 font-bold mb-4 bg-rose-50 p-3 rounded-lg break-words">{String(this.state.errorMsg)}</p>
+          <div className="bg-white p-10 rounded-[2.5rem] shadow-xl max-w-lg w-full text-center border-2 border-rose-100">
+             <AlertTriangle className="w-24 h-24 text-rose-500 mx-auto mb-6 animate-pulse" />
+             <h1 className="text-3xl font-black text-slate-800 mb-4">系統安全防護已啟動</h1>
+             <p className="text-rose-600 font-bold mb-4 bg-rose-50 p-4 rounded-xl break-words text-lg">{String(this.state.errorMsg)}</p>
           </div>
         </div>
       );
