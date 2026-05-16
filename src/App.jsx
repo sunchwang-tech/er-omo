@@ -1,13 +1,13 @@
-// [V64 區域病患計數與護理端長者模式優化版] 
-// 1. 在護理站的各區域篩選按鈕上，動態標註目前的病人量。
-// 2. 調整長者模式 CSS，強制放大護理站主控台中病人卡片的字體與按鈕。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V63 的壓力測試資料。
+// [V65 狀態一鍵重置與病患快速搜尋版] 
+// 1. 新增「狀態全清」測試按鈕，一鍵將全區病患的檢驗、護理指示、同意書與 SOS 狀態重置。
+// 2. 護理站主控台篩選區下方新增「病患搜尋列」，可透過床號、病歷號、姓名即時過濾病患。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V64 的長者模式/計數優化。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
-import { Activity, AlertTriangle, ArrowUpCircle, Bell, Bone, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, CreditCard, Droplets, FileText, FlaskConical, HandHelping, KeyRound, Loader2, Lock, LogOut, Magnet, MapPin, Maximize, Mic, Monitor, MonitorSmartphone, Moon, PenTool, PhoneCall, Power, Share2, ShieldAlert, Smartphone, Sun, UserCircle, Users, Waves, X, ZoomIn, ZoomOut, Volume2, VolumeX, Type, Clock, LogOut as LogOutIcon, CheckSquare, RefreshCw, ScanLine, UserCheck, AlertOctagon, Vibrate, VibrateOff, Navigation, ChevronRight, Trash2, Megaphone, Info } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowUpCircle, Bell, Bone, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, CreditCard, Droplets, FileText, FlaskConical, HandHelping, KeyRound, Loader2, Lock, LogOut, Magnet, MapPin, Maximize, Mic, Monitor, MonitorSmartphone, Moon, PenTool, PhoneCall, Power, Search, Share2, ShieldAlert, Smartphone, Sun, UserCircle, Users, Waves, X, ZoomIn, ZoomOut, Volume2, VolumeX, Type, Clock, LogOut as LogOutIcon, CheckSquare, RefreshCw, ScanLine, UserCheck, AlertOctagon, Vibrate, VibrateOff, Navigation, ChevronRight, Trash2, Megaphone, Info } from 'lucide-react';
 
 const myFirebaseConfig = {
   apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
@@ -601,7 +601,7 @@ function MainApp() {
             </div>
             <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-12 h-12" /></div>
             <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V64</p>
+            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V65</p>
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
               
@@ -1481,6 +1481,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   const [toastMsg, setToastMsg] = useState(null);
   const [zoneFilter, setZoneFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all'); 
+  const [searchQuery, setSearchQuery] = useState(''); // 新增病患搜尋功能狀態
   const [page, setPage] = useState(1);
   const [showHandoff, setShowHandoff] = useState(null); 
   const [unlockedDetails, setUnlockedDetails] = useState({}); 
@@ -1615,6 +1616,24 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast('全區衛教跑馬燈已更新！');
   };
 
+  // 狀態全清 (測試按鈕)：一鍵清除全區病患的檢驗狀態、護理指示、同意書與 SOS 權限
+  const handleResetAllPatients = () => {
+      PATIENTS_LIST.forEach(p => {
+          updatePatientState(p.id, {
+              reminders: [],
+              labStatus: { 
+                 blood: { status: 'unprescribed', text: '未開立', eta: '-' }, urine: { status: 'unprescribed', text: '未開立', eta: '-' }, 
+                 ecg: { status: 'unprescribed', text: '未開立', eta: '-' }, xray: { status: 'unprescribed', text: '未開立', eta: '-' }, 
+                 us: { status: 'unprescribed', text: '未開立', eta: '-' }, ct: { status: 'unprescribed', text: '未開立', eta: '-' }, 
+                 mri: { status: 'unprescribed', text: '未開立', eta: '-' }, other: { status: 'unprescribed', text: '未開立', eta: '-' }
+              },
+              consents: { ct: 'disabled', admission: 'disabled' },
+              sosEnabled: false
+          });
+      });
+      showToast('已一鍵清除所有病患的檢驗與護理狀態');
+  };
+
   // 取得特定區域的過濾列表 (為計算人數使用)
   const getListForZone = (z) => PATIENTS_LIST.filter(p => {
     const st = getMergedState(patientsState[p.id], p.id);
@@ -1629,7 +1648,13 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     return true;
   });
 
-  const filteredList = getListForZone(zoneFilter);
+  // 加上病患搜尋過濾邏輯
+  const filteredList = getListForZone(zoneFilter).filter(p => {
+     if (!searchQuery.trim()) return true;
+     const q = searchQuery.toLowerCase();
+     return p.id.toLowerCase().includes(q) || p.bed.includes(q) || p.name.includes(q) || p.fullName.includes(q);
+  });
+  
   const pagedList = filteredList.slice((page-1)*itemsPerPage, page*itemsPerPage);
 
   return (
@@ -1665,37 +1690,60 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
               <button onClick={() => { setMarqueeInputText(systemConfig?.marqueeText || ''); setShowMarqueeConfig(true); }} className="shrink-0 bg-gradient-to-r from-sky-600 to-blue-500 hover:from-sky-500 hover:to-blue-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(14,165,233,0.3)] active:scale-95 transition-all"><Info className="w-5 h-5"/> 設定衛教跑馬燈</button>
            )}
            <button onClick={() => { clearAllAlerts(); showToast('已一鍵清除所有任務'); }} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><Trash2 className="w-5 h-5"/> 任務全清 (測試)</button>
+           {/* 新增狀態全清測試鈕 */}
+           {role === 'station' && (
+              <button onClick={handleResetAllPatients} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><RefreshCw className="w-5 h-5"/> 狀態全清 (測試)</button>
+           )}
         </div>
       </header>
 
       <div className={`flex flex-1 overflow-hidden ${role==='station'?'flex-row':'flex-col'}`}>
         {role === 'station' && (
           <main className="flex-[2.5] flex flex-col overflow-hidden border-r border-slate-200 bg-slate-50/50">
-             <div className="p-3 bg-white dark:bg-slate-800 border-b flex justify-between items-center gap-2">
-                <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg">
-                   {['all','看診區','兒科區','留觀區','重症區'].map(z => {
-                      const count = getListForZone(z).length;
-                      return (
-                         <button key={z} onClick={()=>{setZoneFilter(z); setPage(1);}} className={`px-4 py-1.5 rounded text-sm font-bold ${zoneFilter===z?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
-                            {z==='all'?'全區':z} <span className="ml-1 opacity-70">({count})</span>
-                         </button>
-                      )
-                   })}
+             <div className="p-3 bg-white dark:bg-slate-800 border-b flex flex-col gap-3">
+                <div className="flex justify-between items-center gap-2">
+                   <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg overflow-x-auto hide-scrollbar">
+                      {['all','看診區','兒科區','留觀區','重症區'].map(z => {
+                         const count = getListForZone(z).length;
+                         return (
+                            <button key={z} onClick={()=>{setZoneFilter(z); setPage(1);}} className={`px-4 py-1.5 rounded text-sm font-bold whitespace-nowrap shrink-0 ${zoneFilter===z?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
+                               {z==='all'?'全區':z} <span className="ml-1 opacity-70">({count})</span>
+                            </button>
+                         )
+                      })}
+                   </div>
+                   <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg shrink-0">
+                      {['all', 'calling', 'discharged'].map(s => {
+                         const labels = { all: '全部', calling: '🔔 呼叫中', discharged: '🔒 已結案' };
+                         return (
+                            <button key={s} onClick={()=>{setStatusFilter(s); setPage(1);}} className={`px-4 py-1.5 rounded text-sm font-bold ${statusFilter===s?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
+                               {labels[s]}
+                            </button>
+                         )
+                      })}
+                   </div>
                 </div>
-                <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg">
-                   {['all', 'calling', 'discharged'].map(s => {
-                      const labels = { all: '全部', calling: '🔔 呼叫中', discharged: '🔒 已結案' };
-                      return (
-                         <button key={s} onClick={()=>{setStatusFilter(s); setPage(1);}} className={`px-4 py-1.5 rounded text-sm font-bold ${statusFilter===s?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
-                            {labels[s]}
-                         </button>
-                      )
-                   })}
+                {/* 新增病患搜尋功能 */}
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+                   <Search className="w-5 h-5 text-slate-400 shrink-0" />
+                   <input 
+                      type="text" 
+                      value={searchQuery} 
+                      onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} 
+                      placeholder="輸入病歷號、床號或姓名搜尋病患... (例如: 03)" 
+                      className="bg-transparent outline-none w-full text-base font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400" 
+                   />
+                   {searchQuery && <button onClick={() => setSearchQuery('')}><X className="w-5 h-5 text-slate-400 hover:text-rose-500"/></button>}
                 </div>
              </div>
 
              <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {pagedList.map(p => {
+                {filteredList.length === 0 ? (
+                   <div className="col-span-1 lg:col-span-2 flex flex-col items-center justify-center py-20 text-slate-400">
+                      <Search className="w-16 h-16 mb-4 opacity-20" />
+                      <p className="text-xl font-bold">找不到符合條件的病患</p>
+                   </div>
+                ) : pagedList.map(p => {
                    const st = getMergedState(patientsState[p.id], p.id);
                    const isCalling = alerts.filter(a => a.patientId === p.id);
                    const triageObj = getTriageStyle(p.triageLevel || 3);
