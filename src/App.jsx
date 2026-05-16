@@ -1,9 +1,7 @@
-// [V62 跑馬燈套版、離院清任務與護理端文字修正版] 
-// 1. 跑馬燈增加快速套版選項 (滿床轉院宣導、腦脊髓膜炎、腸病毒)。
-// 2. 病人離院時，自動從任務佇列中清除該病患相關的所有任務。
-// 3. 護理師端「搶單認領」按鈕改為「主責護師處理中」。
-// 4. 首頁「開發者綜合入口」改為「版本訊息 V62」。
-// 5. 嚴格保留所有核心連線、主控台邏輯與 V61 的版面架構。
+// [V63 百人壓力測試與大量呼叫版] 
+// 1. 擴增病患資料至 70 人，均勻分布至四大區域，供壓力測試。
+// 2. 將主控台「多床聯動」升級為「大量呼叫」，一次性產生 10 筆測試任務。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V62 的版面架構。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -38,14 +36,36 @@ try {
   initError = error.message;
 }
 
-const PATIENTS_LIST = [
-  { id: 'A045', bed: '01', name: '李Ｏ雄', fullName: '李大雄', dob: '1952/05/10', age: 72, triageLevel: 2, initialWaitingCount: 28, token: 'tk_8f2a1b', idLast4: '0000', zone: '重症區' },
-  { id: 'A046', bed: '03', name: '林Ｏ花', fullName: '林小花', dob: '1959/11/22', age: 65, triageLevel: 4, initialWaitingCount: 18, token: 'tk_9c3d4e', idLast4: '0000', zone: '看診區' },
-  { id: 'A047', bed: '05', name: '王Ｏ吉', fullName: '王萬吉', dob: '1945/10/12', age: 78, triageLevel: 3, initialWaitingCount: 12, token: 'tk_1a2b3c', idLast4: '0000', zone: '留觀區' },
-  { id: 'A048', bed: '08', name: '陳Ｏ明', fullName: '陳小明', dob: '2016/08/15', age: 8, triageLevel: 1, initialWaitingCount: 0, token: 'tk_7e8f9g', idLast4: '0000', zone: '兒科區' }, // 變更為兒科區病患
-  { id: 'A049', bed: '12', name: '張Ｏ雅', fullName: '張淑雅', dob: '1983/02/28', age: 41, triageLevel: 5, initialWaitingCount: 25, token: 'tk_4d5e6f', idLast4: '0000', zone: '看診區' },
-  { id: 'A050', bed: '15', name: '黃Ｏ智', fullName: '黃金智', dob: '1964/07/04', age: 60, triageLevel: 3, initialWaitingCount: 14, token: 'tk_2b3c4d', idLast4: '0000', zone: '留觀區' }
-];
+// 動態生成 70 名測試病患資料，均勻分布於 4 大區域供壓力測試
+const ZONES = ['重症區', '看診區', '兒科區', '留觀區'];
+const LAST_NAMES = ['李', '林', '王', '陳', '張', '黃', '吳', '劉', '蔡', '楊'];
+const FIRST_NAMES = ['大雄', '小花', '萬吉', '小明', '淑雅', '金智', '建國', '美麗', '家豪', '雅婷'];
+
+const PATIENTS_LIST = Array.from({ length: 70 }, (_, i) => {
+  const idNum = (i + 45).toString().padStart(3, '0');
+  const bedNum = (i + 1).toString().padStart(2, '0');
+  const lastName = LAST_NAMES[i % LAST_NAMES.length];
+  const firstName = FIRST_NAMES[i % FIRST_NAMES.length];
+  const fullName = `${lastName}${firstName}`;
+  const maskedName = `${lastName}Ｏ${firstName.charAt(1) || firstName.charAt(0)}`;
+  const zone = ZONES[i % 4];
+  const age = zone === '兒科區' ? (i % 14) + 1 : (i % 60) + 18;
+  const triageLevel = (i % 5) + 1;
+
+  return {
+    id: `A${idNum}`,
+    bed: bedNum,
+    name: maskedName,
+    fullName: fullName,
+    dob: `19${90 - age}/01/01`,
+    age: age,
+    triageLevel: triageLevel,
+    initialWaitingCount: i % 30,
+    token: `tk_${i.toString(36)}${idNum}`,
+    idLast4: '0000',
+    zone: zone
+  };
+});
 
 const STAFF_LIST = [
   { empId: 'A001', name: '李護理師', pwd: '0000' }, { empId: 'A002', name: '陳護理師', pwd: '0000' },
@@ -574,7 +594,7 @@ function MainApp() {
             </div>
             <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-12 h-12" /></div>
             <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V62</p>
+            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V63</p>
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
               
@@ -1022,7 +1042,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
 
        elements.push(
           <g key={`step-${i}`} transform={`translate(${midX}, ${midY}) rotate(${angle})`}>
-             {/* 修正：將閃爍動畫 class 移至內部 polygon，避免覆蓋 <g> 的座標轉換 */}
              <polygon className="arrow-step" style={{ animationDelay: `${i * 0.2}s` }} points="-8,6 0,-10 8,6 0,2" fill="#0ea5e9" stroke="#0284c7" strokeWidth="1"/>
           </g>
        );
@@ -1350,7 +1369,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                      <button onClick={() => handleHelpRequest('ivPain')} disabled={helpRequests.ivPain} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivPain ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
                          <span className="text-5xl">{helpRequests.ivPain ? '⏳' : '🩹'}</span><span className="font-bold text-xl">{helpRequests.ivPain ? '已通知護理師' : '漏血/會痛'}</span>
                      </button>
-                     {/* 新增其他需求按鈕 */}
                      <button onClick={() => handleHelpRequest('other')} disabled={helpRequests.other} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center justify-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.other ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
                          <span className="text-5xl">{helpRequests.other ? '⏳' : '💬'}</span><span className="font-bold text-2xl">{helpRequests.other ? '已通知護理師' : '其他需求'}</span>
                      </button>
@@ -1552,11 +1570,19 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   };
 
   const handleMultiBedLinkage = () => {
-    const testPatients = PATIENTS_LIST.slice(0, 3);
-    if(testPatients[0]) createAlert({ patientId: testPatients[0].id, type: 'ivPain', message: '漏血/會痛', priority: 'high' });
-    if(testPatients[1]) createAlert({ patientId: testPatients[1].id, type: 'toilet', message: '已暫離前往洗手間', priority: 'low' });
-    if(testPatients[2]) createAlert({ patientId: testPatients[2].id, type: 'ivEmpty', message: '點滴不滴/沒了', priority: 'medium' });
-    showToast('已啟動多床聯動：模擬多床病患發出呼叫，請測試接單');
+    const testPatients = PATIENTS_LIST.slice(0, 10);
+    const alertTemplates = [
+        { type: 'ivPain', message: '漏血/會痛', priority: 'high' },
+        { type: 'toilet', message: '已暫離前往洗手間', priority: 'low' },
+        { type: 'ivEmpty', message: '點滴不滴/沒了', priority: 'medium' },
+        { type: 'other', message: '其他需求', priority: 'low' },
+        { type: 'sos', message: '🚨病患發出緊急求救🚨', priority: 'high' }
+    ];
+    testPatients.forEach((patient, idx) => {
+        const template = alertTemplates[idx % alertTemplates.length];
+        createAlert({ patientId: patient.id, type: template.type, message: template.message, priority: template.priority });
+    });
+    showToast('已啟動大量呼叫：模擬產生 10 筆測試任務');
   };
 
   const handleSendGlobalBroadcast = () => {
@@ -1624,7 +1650,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
            {role === 'station' && (
               <button onClick={() => setShowGlobalBroadcast(true)} className="shrink-0 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(234,88,12,0.3)] active:scale-95 transition-all"><Megaphone className="w-5 h-5"/> 緊急廣播</button>
            )}
-           <button onClick={handleMultiBedLinkage} className="shrink-0 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(79,70,229,0.3)] active:scale-95 transition-all"><Users className="w-5 h-5"/> 多床聯動 (模擬群呼)</button>
+           <button onClick={handleMultiBedLinkage} className="shrink-0 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(79,70,229,0.3)] active:scale-95 transition-all"><Users className="w-5 h-5"/> 大量呼叫 (壓力測試)</button>
            {role === 'station' && (
               <button onClick={() => { setMarqueeInputText(systemConfig?.marqueeText || ''); setShowMarqueeConfig(true); }} className="shrink-0 bg-gradient-to-r from-sky-600 to-blue-500 hover:from-sky-500 hover:to-blue-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(14,165,233,0.3)] active:scale-95 transition-all"><Info className="w-5 h-5"/> 設定衛教跑馬燈</button>
            )}
