@@ -1,7 +1,7 @@
-// [V63 百人壓力測試與大量呼叫版] 
-// 1. 擴增病患資料至 70 人，均勻分布至四大區域，供壓力測試。
-// 2. 將主控台「多床聯動」升級為「大量呼叫」，一次性產生 10 筆測試任務。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V62 的版面架構。
+// [V64 區域病患計數與護理端長者模式優化版] 
+// 1. 在護理站的各區域篩選按鈕上，動態標註目前的病人量。
+// 2. 調整長者模式 CSS，強制放大護理站主控台中病人卡片的字體與按鈕。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V63 的壓力測試資料。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -553,6 +553,13 @@ function MainApp() {
         .elder-mode h1 { font-size: 2.5rem; }
         .elder-mode h2 { font-size: 2rem; }
         .elder-mode button { transform: scale(1.02); }
+
+        /* 護理站主控台長者模式放大 */
+        .elder-mode .console-patient-card h3 { font-size: 1.8rem; line-height: 2.2rem; }
+        .elder-mode .console-patient-card .text-xs { font-size: 1rem; line-height: 1.5rem; padding: 0.3rem 0.5rem; }
+        .elder-mode .console-patient-card .text-sm { font-size: 1.15rem; line-height: 1.75rem; }
+        .elder-mode .console-patient-card .text-2xl { font-size: 2rem; line-height: 2rem; width: 4.5rem; height: 4.5rem; }
+        .elder-mode .console-patient-card button { font-size: 1.05rem; padding-top: 0.6rem; padding-bottom: 0.6rem; }
         
         /* 導航箭頭閃爍放大動畫 */
         @keyframes arrowFlash {
@@ -594,7 +601,7 @@ function MainApp() {
             </div>
             <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-12 h-12" /></div>
             <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V63</p>
+            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V64</p>
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
               
@@ -1369,6 +1376,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                      <button onClick={() => handleHelpRequest('ivPain')} disabled={helpRequests.ivPain} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivPain ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
                          <span className="text-5xl">{helpRequests.ivPain ? '⏳' : '🩹'}</span><span className="font-bold text-xl">{helpRequests.ivPain ? '已通知護理師' : '漏血/會痛'}</span>
                      </button>
+                     {/* 新增其他需求按鈕 */}
                      <button onClick={() => handleHelpRequest('other')} disabled={helpRequests.other} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center justify-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.other ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
                          <span className="text-5xl">{helpRequests.other ? '⏳' : '💬'}</span><span className="font-bold text-2xl">{helpRequests.other ? '已通知護理師' : '其他需求'}</span>
                      </button>
@@ -1607,19 +1615,21 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast('全區衛教跑馬燈已更新！');
   };
 
-  let filteredList = PATIENTS_LIST.filter(p => {
+  // 取得特定區域的過濾列表 (為計算人數使用)
+  const getListForZone = (z) => PATIENTS_LIST.filter(p => {
     const st = getMergedState(patientsState[p.id], p.id);
     if (statusFilter === 'discharged') {
        if (!st.tokenExpired) return false;
-       if (zoneFilter !== 'all' && p.zone !== zoneFilter) return false;
+       if (z !== 'all' && p.zone !== z) return false;
        return true;
     }
     if (st.tokenExpired) return false;
-    if (zoneFilter !== 'all' && p.zone !== zoneFilter) return false;
+    if (z !== 'all' && p.zone !== z) return false;
     if (statusFilter === 'calling' && !alerts.some(a => a.patientId === p.id)) return false;
     return true;
   });
 
+  const filteredList = getListForZone(zoneFilter);
   const pagedList = filteredList.slice((page-1)*itemsPerPage, page*itemsPerPage);
 
   return (
@@ -1663,15 +1673,20 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
           <main className="flex-[2.5] flex flex-col overflow-hidden border-r border-slate-200 bg-slate-50/50">
              <div className="p-3 bg-white dark:bg-slate-800 border-b flex justify-between items-center gap-2">
                 <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg">
-                   {['all','看診區','兒科區','留觀區','重症區'].map(z => (
-                      <button key={z} onClick={()=>setZoneFilter(z)} className={`px-4 py-1.5 rounded text-sm font-bold ${zoneFilter===z?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>{z==='all'?'全區':z}</button>
-                   ))}
+                   {['all','看診區','兒科區','留觀區','重症區'].map(z => {
+                      const count = getListForZone(z).length;
+                      return (
+                         <button key={z} onClick={()=>{setZoneFilter(z); setPage(1);}} className={`px-4 py-1.5 rounded text-sm font-bold ${zoneFilter===z?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
+                            {z==='all'?'全區':z} <span className="ml-1 opacity-70">({count})</span>
+                         </button>
+                      )
+                   })}
                 </div>
                 <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg">
                    {['all', 'calling', 'discharged'].map(s => {
                       const labels = { all: '全部', calling: '🔔 呼叫中', discharged: '🔒 已結案' };
                       return (
-                         <button key={s} onClick={()=>setStatusFilter(s)} className={`px-4 py-1.5 rounded text-sm font-bold ${statusFilter===s?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
+                         <button key={s} onClick={()=>{setStatusFilter(s); setPage(1);}} className={`px-4 py-1.5 rounded text-sm font-bold ${statusFilter===s?'bg-white dark:bg-slate-700 shadow text-indigo-600':'text-slate-400'}`}>
                             {labels[s]}
                          </button>
                       )
@@ -1686,7 +1701,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                    const triageObj = getTriageStyle(p.triageLevel || 3);
                    
                    return (
-                     <div key={p.id} className={`bg-white dark:bg-slate-800 p-5 rounded-2xl border ${isCalling.length>0?'border-rose-400 shadow-rose-100 animate-pulse':'border-slate-200 dark:border-slate-700'} relative flex flex-col`}>
+                     <div key={p.id} className={`console-patient-card bg-white dark:bg-slate-800 p-5 rounded-2xl border ${isCalling.length>0?'border-rose-400 shadow-rose-100 animate-pulse':'border-slate-200 dark:border-slate-700'} relative flex flex-col`}>
                         <div className="flex items-center gap-4 mb-4">
                            <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center font-black text-2xl shadow-inner">{p.bed}</div>
                            <div className="flex-1">
