@@ -1,7 +1,7 @@
-// [V65 狀態一鍵重置與病患快速搜尋版] 
-// 1. 新增「狀態全清」測試按鈕，一鍵將全區病患的檢驗、護理指示、同意書與 SOS 狀態重置。
-// 2. 護理站主控台篩選區下方新增「病患搜尋列」，可透過床號、病歷號、姓名即時過濾病患。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V64 的長者模式/計數優化。
+// [V66 緊急推播半幅與自動消失修正版] 
+// 1. 修正「緊急廣播」推播邏輯，加入已讀標記避免重複彈出，並設定 5 秒自動消失。
+// 2. 將緊急推播的畫面從全幅修改為「上半畫面的半幅通知」。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V65 的功能。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -561,6 +561,12 @@ function MainApp() {
         .elder-mode .console-patient-card .text-2xl { font-size: 2rem; line-height: 2rem; width: 4.5rem; height: 4.5rem; }
         .elder-mode .console-patient-card button { font-size: 1.05rem; padding-top: 0.6rem; padding-bottom: 0.6rem; }
         
+        /* 緊急廣播半幅下滑動畫 */
+        @keyframes slideDownHalf {
+           from { transform: translateY(-100%); opacity: 0; }
+           to { transform: translateY(0); opacity: 1; }
+        }
+
         /* 導航箭頭閃爍放大動畫 */
         @keyframes arrowFlash {
            0% { opacity: 0; transform: scale(0.8) translateY(4px); filter: drop-shadow(0 0 2px rgba(14,165,233,0.3)); }
@@ -601,7 +607,7 @@ function MainApp() {
             </div>
             <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-12 h-12" /></div>
             <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V65</p>
+            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V66</p>
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
               
@@ -734,6 +740,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
 
   const [openFaqIndex, setOpenFaqIndex] = useState(null); 
   const [hasNotifiedBilling, setHasNotifiedBilling] = useState(false);
+  const processedCmdsRef = useRef(new Set()); // 新增：用於記錄已處理過的全域推播ID
 
   const { currentStep, currentStatus, waitingCount, labStatus, reminders, rfid, sosEnabled, consents, billingPaidAt } = patientState;
   
@@ -838,13 +845,20 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   };
 
   useEffect(() => {
-    const myCmd = commands.find(c => c.patientId === currentPatient.id || c.patientId === 'GLOBAL');
+    const myCmd = commands.find(c => (c.patientId === currentPatient.id || c.patientId === 'GLOBAL') && !processedCmdsRef.current.has(c.id));
     if (myCmd) {
+      processedCmdsRef.current.add(myCmd.id); // 標記為已處理，避免無限觸發
+      
       if (myCmd.action === 'custom_emergency') {
          setCustomEmergencyAlert(myCmd.message);
          triggerVibe([1000, 500, 1000, 500, 1000], true);
          playVoice(`緊急廣播：${myCmd.message}`, true);
          if(myCmd.patientId !== 'GLOBAL') ackCommand(myCmd.id);
+         
+         // 設定畫面出現後5秒會自動消失
+         setTimeout(() => {
+             setCustomEmergencyAlert(null);
+         }, 5000);
       }
       else if (myCmd.action === 'triage_bump') { 
          setShowTriageBumpAlert(true); 
@@ -1126,11 +1140,11 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
         )}
 
         {customEmergencyAlert && (
-          <div className="absolute inset-0 z-[200] bg-red-600 flex flex-col items-center justify-center p-6 animate-[fadeIn_0.2s_ease-out]">
-            <Megaphone className="w-32 h-32 text-white mb-6 animate-bounce" />
-            <h2 className="text-5xl font-black text-white mb-4 tracking-widest">緊急廣播</h2>
-            <p className="text-3xl text-white text-center mb-10 font-bold leading-relaxed">{customEmergencyAlert}</p>
-            <button onClick={() => setCustomEmergencyAlert(null)} className="bg-white text-red-600 font-black text-3xl py-5 px-12 rounded-2xl shadow-xl hover:scale-105 transition-transform active:scale-95">我已了解</button>
+          <div className="absolute top-0 left-0 right-0 h-[50%] z-[200] bg-red-600 rounded-b-[3rem] flex flex-col items-center justify-center p-8 shadow-[0_20px_50px_rgba(220,38,38,0.5)] animate-[slideDownHalf_0.4s_ease-out]">
+            <Megaphone className="w-20 h-20 text-white mb-4 animate-bounce" />
+            <h2 className="text-4xl font-black text-white mb-4 tracking-widest">緊急廣播</h2>
+            <p className="text-2xl text-white text-center mb-8 font-bold leading-relaxed line-clamp-4">{customEmergencyAlert}</p>
+            <button onClick={() => setCustomEmergencyAlert(null)} className="bg-white text-red-600 font-black text-2xl py-4 px-10 rounded-2xl shadow-xl hover:scale-105 transition-transform active:scale-95">我已了解</button>
           </div>
         )}
 
