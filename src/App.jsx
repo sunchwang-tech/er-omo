@@ -1,7 +1,7 @@
-// [V66 緊急推播半幅與自動消失修正版] 
-// 1. 修正「緊急廣播」推播邏輯，加入已讀標記避免重複彈出，並設定 5 秒自動消失。
-// 2. 將緊急推播的畫面從全幅修改為「上半畫面的半幅通知」。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V65 的功能。
+// [V67 嚴禁下床與首頁視覺翻新版] 
+// 1. 將「需臥床」全面更改為「嚴禁下床」。
+// 2. 首頁更新：替換為「ER即時通, 醫點就通」圖形化 Logo 排版。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V66 的功能。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -74,13 +74,13 @@ const STAFF_LIST = [
 
 const REMINDER_TYPES = [
   { id: 'no_water', icon: '💧', label: '禁喝水', desc: '檢查前請勿飲水' }, { id: 'no_food', icon: '🍔', label: '禁飲食', desc: '包含任何食物' },
-  { id: 'stay_bed', icon: '🛏️', label: '需臥床', desc: '請勿下床走動' }, { id: 'urine_test', icon: '🧪', label: '留尿液', desc: '請收集檢體' }
+  { id: 'stay_bed', icon: '🛏️', label: '嚴禁下床', desc: '請勿下床走動' }, { id: 'urine_test', icon: '🧪', label: '留尿液', desc: '請收集檢體' }
 ];
 
 const DEFAULT_EXPLANATIONS = {
   '禁喝水': '阿公阿嬤，因為等一下要做檢查，怕喝水會影響結果，或是怕您嗆到。再忍耐一下下喔！',
   '禁飲食': '長輩您好，為了讓檢查結果準確，現在先不能吃東西也不能喝水喔。辛苦您了。',
-  '需臥床': '阿公阿嬤，為了您的安全，現在請乖乖躺在床上休息，千萬不要自己下床走動。',
+  '嚴禁下床': '阿公阿嬤，為了您的安全，現在請乖乖躺在床上休息，千萬不要自己下床走動。',
   '留尿液': '長輩您好，醫生需要檢查您的尿液，請您去廁所的時候，幫忙留一點尿液。'
 };
 
@@ -605,10 +605,40 @@ function MainApp() {
             <div className="absolute top-6 right-6 z-20">
                <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
             </div>
-            <div className="w-20 h-20 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-[0_5px_15px_rgba(16,185,129,0.3)] mb-6 animate-pulse"><Activity className="w-12 h-12" /></div>
-            <h1 className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white mb-2 tracking-widest text-center">急診智能導航系統</h1>
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold mb-8 text-center text-base bg-emerald-50 dark:bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-200 dark:border-emerald-500/30">版本訊息 V66</p>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600">?view=station</span></p>
+            
+            {/* 首頁 Logo 區塊 - 精美重製版 */}
+            <div className="mb-6 w-full max-w-[320px] sm:max-w-[450px] flex flex-col items-center justify-center">
+                {/* 實際運作時，若根目錄有 logo.png，則會顯示真實圖片 */}
+                <img 
+                    src="logo.png" 
+                    alt="ER即時通, 醫點就通" 
+                    className="w-full h-auto object-contain drop-shadow-sm mb-4"
+                    onError={(e) => {
+                        e.target.style.display = 'none';
+                        if (e.target.nextSibling) {
+                            e.target.nextSibling.style.display = 'flex';
+                        }
+                    }}
+                />
+                {/* 預覽環境若無圖檔，自動啟用的精緻 CSS 備用 Logo */}
+                <div className="flex-col items-center text-center animate-[fadeIn_0.5s_ease-out] mb-4" style={{ display: 'none' }}>
+                    <div className="flex items-center justify-center relative scale-90 sm:scale-100">
+                        <span className="text-[6rem] sm:text-[7rem] font-black text-[#5ba1f8] leading-none tracking-tighter drop-shadow-md z-10">E</span>
+                        <div className="relative flex items-center justify-center z-20 -ml-2">
+                           <span className="text-[6rem] sm:text-[7rem] font-black text-[#4ad2c4] leading-none tracking-tighter drop-shadow-md">R</span>
+                           <span className="absolute text-white text-4xl sm:text-5xl font-black drop-shadow-sm mt-1 ml-1">+</span>
+                        </div>
+                        <div className="ml-1 mt-4 text-[#f37c8b] flex flex-col items-center z-0 animate-pulse">
+                           <span className="text-4xl sm:text-5xl">❤️</span>
+                        </div>
+                    </div>
+                    <h1 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#3b82f6] to-[#0d9488] tracking-widest mt-2 drop-shadow-sm px-4">ER即時通, 醫點就通</h1>
+                </div>
+            </div>
+
+            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V67</p>
+            <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block shadow-inner">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 shadow-inner">?view=station</span></p>
+            
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
               
               <div className="bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center shadow-xl hover:border-sky-500 transition-colors">
@@ -740,7 +770,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
 
   const [openFaqIndex, setOpenFaqIndex] = useState(null); 
   const [hasNotifiedBilling, setHasNotifiedBilling] = useState(false);
-  const processedCmdsRef = useRef(new Set()); // 新增：用於記錄已處理過的全域推播ID
+  const processedCmdsRef = useRef(new Set()); 
 
   const { currentStep, currentStatus, waitingCount, labStatus, reminders, rfid, sosEnabled, consents, billingPaidAt } = patientState;
   
@@ -847,7 +877,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   useEffect(() => {
     const myCmd = commands.find(c => (c.patientId === currentPatient.id || c.patientId === 'GLOBAL') && !processedCmdsRef.current.has(c.id));
     if (myCmd) {
-      processedCmdsRef.current.add(myCmd.id); // 標記為已處理，避免無限觸發
+      processedCmdsRef.current.add(myCmd.id); 
       
       if (myCmd.action === 'custom_emergency') {
          setCustomEmergencyAlert(myCmd.message);
@@ -855,7 +885,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
          playVoice(`緊急廣播：${myCmd.message}`, true);
          if(myCmd.patientId !== 'GLOBAL') ackCommand(myCmd.id);
          
-         // 設定畫面出現後5秒會自動消失
          setTimeout(() => {
              setCustomEmergencyAlert(null);
          }, 5000);
@@ -1495,7 +1524,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   const [toastMsg, setToastMsg] = useState(null);
   const [zoneFilter, setZoneFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all'); 
-  const [searchQuery, setSearchQuery] = useState(''); // 新增病患搜尋功能狀態
+  const [searchQuery, setSearchQuery] = useState(''); 
   const [page, setPage] = useState(1);
   const [showHandoff, setShowHandoff] = useState(null); 
   const [unlockedDetails, setUnlockedDetails] = useState({}); 
@@ -1576,7 +1605,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
 
   const handleDischarge = (pId) => { 
     updatePatientState(pId, { tokenExpired: true, currentStep: 4, currentStatus: '已離院' }); 
-    // 移除該病患所有任務
     alerts.filter(a => a.patientId === pId).forEach(a => resolveAlert(a.id));
     showToast('病患已離院結案，相關任務與連結已註銷'); 
   };
@@ -1630,7 +1658,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast('全區衛教跑馬燈已更新！');
   };
 
-  // 狀態全清 (測試按鈕)：一鍵清除全區病患的檢驗狀態、護理指示、同意書與 SOS 權限
   const handleResetAllPatients = () => {
       PATIENTS_LIST.forEach(p => {
           updatePatientState(p.id, {
@@ -1648,7 +1675,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
       showToast('已一鍵清除所有病患的檢驗與護理狀態');
   };
 
-  // 取得特定區域的過濾列表 (為計算人數使用)
   const getListForZone = (z) => PATIENTS_LIST.filter(p => {
     const st = getMergedState(patientsState[p.id], p.id);
     if (statusFilter === 'discharged') {
@@ -1662,7 +1688,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     return true;
   });
 
-  // 加上病患搜尋過濾邏輯
   const filteredList = getListForZone(zoneFilter).filter(p => {
      if (!searchQuery.trim()) return true;
      const q = searchQuery.toLowerCase();
@@ -1704,7 +1729,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
               <button onClick={() => { setMarqueeInputText(systemConfig?.marqueeText || ''); setShowMarqueeConfig(true); }} className="shrink-0 bg-gradient-to-r from-sky-600 to-blue-500 hover:from-sky-500 hover:to-blue-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(14,165,233,0.3)] active:scale-95 transition-all"><Info className="w-5 h-5"/> 設定衛教跑馬燈</button>
            )}
            <button onClick={() => { clearAllAlerts(); showToast('已一鍵清除所有任務'); }} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><Trash2 className="w-5 h-5"/> 任務全清 (測試)</button>
-           {/* 新增狀態全清測試鈕 */}
            {role === 'station' && (
               <button onClick={handleResetAllPatients} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><RefreshCw className="w-5 h-5"/> 狀態全清 (測試)</button>
            )}
@@ -1737,7 +1761,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                       })}
                    </div>
                 </div>
-                {/* 新增病患搜尋功能 */}
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
                    <Search className="w-5 h-5 text-slate-400 shrink-0" />
                    <input 
