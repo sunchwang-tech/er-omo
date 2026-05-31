@@ -1,7 +1,7 @@
-// [V67 嚴禁下床與首頁視覺翻新版] 
-// 1. 將「需臥床」全面更改為「嚴禁下床」。
-// 2. 首頁更新：替換為「ER即時通, 醫點就通」圖形化 Logo 排版。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V66 的功能。
+// [V70 連線狀態視覺化與一鍵回復住院版] 
+// 1. 病人端/家屬端連線標籤改為開關視覺：連線時綠色顯色，離線(暫離)時灰色顯色。
+// 2. 護理站主控台「已結案」頁籤新增「一鍵回復住院」測試功能，可批次撤銷離院。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V69 的功能。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -507,6 +507,15 @@ function MainApp() {
               try { await deleteDoc(doc(db, basePath, 'alerts', a.id)); } catch(e){}
           });
       }
+      
+      const currentCommands = [...commands];
+      setCommands([]);
+      broadcastSync('SYNC_COMMANDS', 'omo_commands', []);
+      if (user && db) {
+          currentCommands.forEach(async (c) => {
+              try { await deleteDoc(doc(db, basePath, 'commands', c.id)); } catch(e){}
+          });
+      }
   };
   const createCommand = async (data) => { 
       const newId = Math.random().toString(36).substr(2, 9);
@@ -548,7 +557,7 @@ function MainApp() {
   return (
     <div className={globalClass}>
       <style>{`
-        /* 長者模式進一步放大所有文字 */
+        /* 基礎長者模式放大 */
         .elder-mode { font-size: 130%; }
         .elder-mode h1 { font-size: 2.5rem; }
         .elder-mode h2 { font-size: 2rem; }
@@ -561,6 +570,21 @@ function MainApp() {
         .elder-mode .console-patient-card .text-2xl { font-size: 2rem; line-height: 2rem; width: 4.5rem; height: 4.5rem; }
         .elder-mode .console-patient-card button { font-size: 1.05rem; padding-top: 0.6rem; padding-bottom: 0.6rem; }
         
+        /* 病患端/家屬端長者模式全面放大規則 */
+        .elder-mode .patient-app-container .text-xs { font-size: 1rem; line-height: 1.5rem; }
+        .elder-mode .patient-app-container .text-sm { font-size: 1.15rem; line-height: 1.75rem; }
+        .elder-mode .patient-app-container .text-base { font-size: 1.3rem; line-height: 1.8rem; }
+        .elder-mode .patient-app-container .text-lg { font-size: 1.5rem; line-height: 2rem; }
+        .elder-mode .patient-app-container .text-xl { font-size: 1.75rem; line-height: 2.2rem; }
+        .elder-mode .patient-app-container .text-2xl { font-size: 2rem; line-height: 2.5rem; }
+        .elder-mode .patient-app-container .text-3xl { font-size: 2.4rem; line-height: 2.8rem; }
+        .elder-mode .patient-app-container .text-4xl { font-size: 3rem; line-height: 1; }
+        .elder-mode .patient-app-container .text-5xl { font-size: 3.5rem; line-height: 1; }
+        .elder-mode .patient-app-container .w-10 { width: 3.5rem; height: 3.5rem; } /* 放大就診流程的圈圈 */
+        .elder-mode .patient-app-container .h-10 { height: 3.5rem; }
+        .elder-mode .patient-app-container .w-14 { width: 4.5rem; height: 4.5rem; } /* 放大圖示圈圈 */
+        .elder-mode .patient-app-container .h-14 { height: 4.5rem; }
+
         /* 緊急廣播半幅下滑動畫 */
         @keyframes slideDownHalf {
            from { transform: translateY(-100%); opacity: 0; }
@@ -636,7 +660,7 @@ function MainApp() {
                 </div>
             </div>
 
-            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V67</p>
+            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V70</p>
             <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block shadow-inner">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 shadow-inner">?view=station</span></p>
             
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1032,6 +1056,15 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     
     const isStart = (row === 9 && col === 7) && is1F;
 
+    // [導航專注模式邏輯]：如果正在導航 (activeDestination 存在)，且這個格子有地標，但不是目標、也不是起點，就不顯示內容與標籤
+    const isNavigating = Boolean(activeDestination);
+    const shouldHideLandmark = isNavigating && !isStart && !isDestLabel && destId !== null;
+
+    if (shouldHideLandmark) {
+       labelText = null;
+       content = null;
+    }
+
     switch(cellType) {
       case 0: baseStyle = 'opacity-0'; break;
       case 1: baseStyle = isStart && is1F ? 'bg-emerald-400 z-20 shadow-[0_0_15px_#34d399]' : 'bg-stone-200 dark:bg-slate-800 border border-stone-300 dark:border-slate-700'; break;
@@ -1112,7 +1145,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   const triage = getTriageStyle(currentPatient.triageLevel || 3);
 
   return (
-    <div className="flex justify-center items-start sm:p-4 relative overflow-hidden h-[100dvh] bg-gradient-to-br from-slate-50 via-sky-50 to-amber-50 dark:from-slate-950 dark:via-sky-950 dark:to-slate-900">
+    <div className="flex justify-center items-start sm:p-4 relative overflow-hidden h-[100dvh] bg-gradient-to-br from-slate-50 via-sky-50 to-amber-50 dark:from-slate-950 dark:via-sky-950 dark:to-slate-900 patient-app-container">
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-teal-400/20 dark:bg-teal-500/10 rounded-full blur-[80px]"></div>
          <div className="absolute bottom-[10%] right-[-10%] w-[60%] h-[60%] bg-sky-400/20 dark:bg-sky-500/10 rounded-full blur-[100px]"></div>
@@ -1200,7 +1233,10 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
               <h1 className="text-4xl font-black text-slate-900 dark:text-white">{currentPatient.name}</h1>
               {isProxyMode ? <span className="bg-purple-50 text-purple-600 text-sm font-bold px-3 py-1 rounded-full border border-purple-200">👨‍⚖️ 代理人授權</span> 
                : isFamilyMode ? <span className="bg-amber-50 text-amber-600 text-sm font-bold px-3 py-1 rounded-full border border-amber-200">👨‍👩‍👧 家屬模式</span> 
-               : <span className="bg-emerald-50 text-emerald-600 text-sm font-bold px-3 py-1 rounded-full border border-emerald-200">📍 即時定位</span>}
+               : <div className="flex items-center bg-slate-200/50 dark:bg-slate-700/50 rounded-full p-0.5 border border-slate-300 dark:border-slate-600 shadow-inner">
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full transition-all duration-300 ${rfid === 'active' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-400 dark:text-slate-500'}`}>連線中</span>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full transition-all duration-300 ${rfid !== 'active' ? 'bg-slate-500 dark:bg-slate-600 text-white shadow-md' : 'text-slate-400 dark:text-slate-500'}`}>離線</span>
+                 </div>}
             </div>
             <button onClick={onLogout} className="p-2 bg-slate-100/80 dark:bg-slate-700/80 rounded-xl text-slate-500 hover:text-rose-500 transition-colors"><LogOut className="w-6 h-6"/></button>
           </div>
@@ -1615,6 +1651,23 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast('已撤銷離院！病患可重新登入測試。');
   };
 
+  const handleReadmitAllDischarged = () => {
+    let count = 0;
+    PATIENTS_LIST.forEach(p => {
+      const st = getMergedState(patientsState[p.id], p.id);
+      if (st.tokenExpired) {
+        const defaultPatient = PATIENTS_LIST.find(x => x.id === p.id);
+        updatePatientState(p.id, { tokenExpired: false, currentStep: 1, currentStatus: '等候醫師看診/開單', billingPaidAt: null, waitingCount: defaultPatient ? defaultPatient.initialWaitingCount : 12 });
+        count++;
+      }
+    });
+    if(count > 0) {
+      showToast(`已成功將 ${count} 名結案病患撤銷離院！`);
+    } else {
+      showToast('目前沒有已結案的病患。');
+    }
+  };
+
   const handleMarkPaid = (pId) => {
     updatePatientState(pId, { billingPaidAt: Date.now(), currentStatus: '已繳費 (預計30分後自動結案)' });
     showToast('已觸發繳費成功，病患端啟動 30 分鐘自動離院倒數 (模擬 RFID 掃描事件)');
@@ -1672,7 +1725,8 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
               sosEnabled: false
           });
       });
-      showToast('已一鍵清除所有病患的檢驗與護理狀態');
+      clearAllAlerts(); 
+      showToast('已一鍵清除所有病患狀態與推播畫面');
   };
 
   const getListForZone = (z) => PATIENTS_LIST.filter(p => {
@@ -1729,6 +1783,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
               <button onClick={() => { setMarqueeInputText(systemConfig?.marqueeText || ''); setShowMarqueeConfig(true); }} className="shrink-0 bg-gradient-to-r from-sky-600 to-blue-500 hover:from-sky-500 hover:to-blue-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(14,165,233,0.3)] active:scale-95 transition-all"><Info className="w-5 h-5"/> 設定衛教跑馬燈</button>
            )}
            <button onClick={() => { clearAllAlerts(); showToast('已一鍵清除所有任務'); }} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><Trash2 className="w-5 h-5"/> 任務全清 (測試)</button>
+           {/* 新增狀態全清測試鈕 */}
            {role === 'station' && (
               <button onClick={handleResetAllPatients} className="shrink-0 bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white px-5 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-[0_4px_15px_rgba(100,116,139,0.3)] active:scale-95 transition-all"><RefreshCw className="w-5 h-5"/> 狀態全清 (測試)</button>
            )}
@@ -1750,7 +1805,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                          )
                       })}
                    </div>
-                   <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg shrink-0">
+                   <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-lg shrink-0 items-center">
                       {['all', 'calling', 'discharged'].map(s => {
                          const labels = { all: '全部', calling: '🔔 呼叫中', discharged: '🔒 已結案' };
                          return (
@@ -1759,8 +1814,14 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                             </button>
                          )
                       })}
+                      {statusFilter === 'discharged' && (
+                          <button onClick={handleReadmitAllDischarged} className="ml-1 px-3 py-1.5 rounded text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow transition-all flex items-center gap-1 active:scale-95">
+                             <RefreshCw className="w-4 h-4"/>一鍵回復住院
+                          </button>
+                      )}
                    </div>
                 </div>
+                {/* 新增病患搜尋功能 */}
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
                    <Search className="w-5 h-5 text-slate-400 shrink-0" />
                    <input 
