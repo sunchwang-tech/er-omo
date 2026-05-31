@@ -1,7 +1,7 @@
 // [V70 連線狀態視覺化與一鍵回復住院版] 
-// 1. 病人端/家屬端連線標籤改為開關視覺：連線時綠色顯色，離線(暫離)時灰色顯色。
-// 2. 護理站主控台「已結案」頁籤新增「一鍵回復住院」測試功能，可批次撤銷離院。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V69 的功能。
+// [V71 緊急推播防重複與單一覆蓋修正版] 
+// 1. 修正緊急推播邏輯：發送新的全域廣播時，自動覆蓋舊廣播，確保病人端只會收到最後一筆。
+// 2. 嚴格保留所有核心連線、主控台邏輯與 V70 的功能。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -520,8 +520,27 @@ function MainApp() {
   const createCommand = async (data) => { 
       const newId = Math.random().toString(36).substr(2, 9);
       const newObj = { ...data, timestamp: Date.now() };
-      setCommands(prev => { const next = [{ id: newId, ...newObj }, ...prev]; broadcastSync('SYNC_COMMANDS', 'omo_commands', next); return next; });
-      if (user && db) { try { await setDoc(doc(db, basePath, 'commands', newId), newObj); } catch(e){} }
+      
+      // 核心修正：如果是全域緊急推播，先過濾掉舊的，確保只保留最新的一筆
+      setCommands(prev => { 
+         const filteredPrev = data.action === 'custom_emergency' 
+            ? prev.filter(c => c.action !== 'custom_emergency') 
+            : prev;
+         const next = [{ id: newId, ...newObj }, ...filteredPrev]; 
+         broadcastSync('SYNC_COMMANDS', 'omo_commands', next); 
+         return next; 
+      });
+      
+      if (user && db) { 
+          // 若為全域推播，也同步清理 Firebase 上舊的指令
+          if (data.action === 'custom_emergency') {
+              const oldCmds = commands.filter(c => c.action === 'custom_emergency');
+              oldCmds.forEach(async (c) => {
+                  try { await deleteDoc(doc(db, basePath, 'commands', c.id)); } catch(e){}
+              });
+          }
+          try { await setDoc(doc(db, basePath, 'commands', newId), newObj); } catch(e){} 
+      }
   };
   const ackCommand = async (id) => { 
       setCommands(prev => { const next = prev.filter(c => c.id !== id); broadcastSync('SYNC_COMMANDS', 'omo_commands', next); return next; });
