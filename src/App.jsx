@@ -1,7 +1,7 @@
-// [V72 導航選單置頂收合式優化版] 
-// 1. 將導航地點列表移至地圖上方，並改為收合式選單設計，改善手機版下拉滑動體驗。
-// 2. 點擊導航地點後，選單會自動收合，將最大畫面留給地圖導航。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V71 的功能。
+// [V74 完整地標導航與檢查室綁定版] 
+// 1. 補齊遺失的地標選項：加入檢查室、心電圖室，並正名電腦斷層室、核磁共振室等。
+// 2. 導航連動綁定：將「尿液」與「其他」檢驗的導航目標精確指向「檢查室」。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V73 的功能 (選單置頂、優先 Line 分享等)。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -117,27 +117,31 @@ const MAP_LAYOUT_3F = [
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 ];
 
+// V74: 修改地標將 screening 改為 exam_room
 const MAP_LANDMARKS = {
   'er_entrance': {row:9, col:7}, 'pharmacy': {row:0, col:1}, 'cashier': {row:0, col:2}, 
   'elevator': {row:3, col:1}, 'xray': {row:3, col:7}, 'ct': {row:3, col:8}, 
   'us': {row:5, col:7}, 'mri': {row:5, col:8}, 'blood': {row:6, col:1}, 
-  'screening': {row:7, col:1}, 'ecg': {row:8, col:5}, 'nurse': {row:2, col:10}, 
+  'exam_room': {row:7, col:1}, 'ecg': {row:8, col:5}, 'nurse': {row:2, col:10}, 
   'icu': {row:5, col:2},
   'water': {row:2, col:7}, 'trash': {row:7, col:7}, 'toilet': {row:7, col:9}
 };
 
 const MED_STEPS = ['檢傷/掛號', '看診', '檢查/檢驗', '報告', '留觀/離院'];
 
+// V74: 補齊所有缺失的導航地點與明確名稱
 const NAV_DESTINATIONS = [
   { id: 'er_entrance', icon: '🚪', label: '急診入口', guidance: '請往大門口方向走。' },
   { id: 'pharmacy', icon: '💊', label: '急診藥局', guidance: '請前往大廳，看到批價櫃檯後左轉，直接可以到藥局。' },
   { id: 'cashier', icon: '💳', label: '批價掛號', guidance: '請往大門口方向走，批價掛號櫃檯在您的右手邊。' },
   { id: 'elevator', icon: '🛗', label: '電梯', guidance: '請直走，經過批價櫃檯後，前方左側即是電梯。' },
   { id: 'xray', icon: '☢️', label: 'X光室', guidance: '請直走，經過批價櫃檯後，前方右側即是 X 光室。' },
-  { id: 'ct', icon: '🖥️', label: '電腦斷層', guidance: '請直走，經過 X 光室後，最深處即是電腦斷層室。' },
+  { id: 'ct', icon: '🖥️', label: '電腦斷層室', guidance: '請直走，經過 X 光室後，最深處即是電腦斷層室。' },
   { id: 'us', icon: '🌊', label: '超音波室', guidance: '請往急救區方向走，超音波室在您的右側。' },
-  { id: 'mri', icon: '🧲', label: '核磁共振', guidance: '請往深處走，經過超音波室後即可抵達核磁共振室。' },
+  { id: 'mri', icon: '🧲', label: '核磁共振室', guidance: '請往深處走，經過超音波室後即可抵達核磁共振室。' },
   { id: 'blood', icon: '🔬', label: '檢驗科', guidance: '請直走，經過批價櫃檯後，前方左側即是檢驗科。' },
+  { id: 'exam_room', icon: '🩺', label: '檢查室', guidance: '請沿著走廊直走，檢查室在您的左側。' },
+  { id: 'ecg', icon: '📈', label: '心電圖室', guidance: '請前往心電圖室。' },
   { id: 'nurse', icon: '👩‍⚕️', label: '護理站', guidance: '請沿著中央走廊直走，護理站就在您的正前方。' },
   { id: 'icu', icon: '🏥', label: '加護病房', guidance: '請先搭乘電梯至 3 樓，出電梯後直走即可抵達加護病房。' },
   { id: 'toilet', icon: '🚻', label: '廁所', guidance: '請往大廳方向走，廁所在您的左手邊。' },
@@ -567,8 +571,6 @@ function MainApp() {
       );
   }
 
-  // 設定全域基礎字體大小放大 (透過 className text-lg)
-  // 長者模式時進一步放大 (透過自訂 elder-mode class)
   const globalClass = `text-lg font-sans ${settings.isDarkMode ? 'dark' : ''} ${settings.elderMode ? 'elder-mode' : ''}`;
 
   return (
@@ -597,9 +599,9 @@ function MainApp() {
         .elder-mode .patient-app-container .text-3xl { font-size: 2.4rem; line-height: 2.8rem; }
         .elder-mode .patient-app-container .text-4xl { font-size: 3rem; line-height: 1; }
         .elder-mode .patient-app-container .text-5xl { font-size: 3.5rem; line-height: 1; }
-        .elder-mode .patient-app-container .w-10 { width: 3.5rem; height: 3.5rem; } /* 放大就診流程的圈圈 */
+        .elder-mode .patient-app-container .w-10 { width: 3.5rem; height: 3.5rem; } 
         .elder-mode .patient-app-container .h-10 { height: 3.5rem; }
-        .elder-mode .patient-app-container .w-14 { width: 4.5rem; height: 4.5rem; } /* 放大圖示圈圈 */
+        .elder-mode .patient-app-container .w-14 { width: 4.5rem; height: 4.5rem; } 
         .elder-mode .patient-app-container .h-14 { height: 4.5rem; }
 
         /* 緊急廣播半幅下滑動畫 */
@@ -647,9 +649,7 @@ function MainApp() {
                <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
             </div>
             
-            {/* 首頁 Logo 區塊 - 精美重製版 */}
             <div className="mb-6 w-full max-w-[320px] sm:max-w-[450px] flex flex-col items-center justify-center">
-                {/* 實際運作時，若根目錄有 logo.png，則會顯示真實圖片 */}
                 <img 
                     src="logo.png" 
                     alt="ER即時通, 醫點就通" 
@@ -661,7 +661,6 @@ function MainApp() {
                         }
                     }}
                 />
-                {/* 預覽環境若無圖檔，自動啟用的精緻 CSS 備用 Logo */}
                 <div className="flex-col items-center text-center animate-[fadeIn_0.5s_ease-out] mb-4" style={{ display: 'none' }}>
                     <div className="flex items-center justify-center relative scale-90 sm:scale-100">
                         <span className="text-[6rem] sm:text-[7rem] font-black text-[#5ba1f8] leading-none tracking-tighter drop-shadow-md z-10">E</span>
@@ -677,7 +676,7 @@ function MainApp() {
                 </div>
             </div>
 
-            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V72</p>
+            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V74</p>
             <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block shadow-inner">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 shadow-inner">?view=station</span></p>
             
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -842,21 +841,34 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   }, [billingPaidAt, hasNotifiedBilling]);
 
   const handleCopyToClipboard = async () => {
+    const shareText = `【ER即時通】家屬探病專屬連結：\n${shareUrl}`;
     try {
       if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        alert(`已成功複製分享連結！\n${shareUrl}`);
+        await navigator.clipboard.writeText(shareText);
+      } else {
+        const textArea = document.createElement("textarea"); textArea.value = shareText; document.body.appendChild(textArea); textArea.select();
+        document.execCommand('copy'); 
+        document.body.removeChild(textArea); 
+      }
+    } catch (err) { console.warn('Clipboard write error', err); }
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'ER即時通 家屬探視連結',
+          text: '請點擊以下連結查看病患即時動態與導航：\n',
+          url: shareUrl
+        });
         setShowShareModal(false);
         return;
+      } catch (err) {
+        console.warn("原生分享取消或失敗", err);
       }
-      const textArea = document.createElement("textarea"); textArea.value = shareUrl; document.body.appendChild(textArea); textArea.select();
-      document.execCommand('copy'); 
-      alert(`已成功複製分享連結！\n${shareUrl}`);
-      document.body.removeChild(textArea); 
-      setShowShareModal(false);
-    } catch (err) { 
-      alert(`請手動複製連結：\n${shareUrl}`); 
     }
+    
+    alert('連結已複製！將為您優先開啟 Line 分享...');
+    window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, '_blank');
+    setShowShareModal(false);
   };
 
   const handleAudioUnlock = () => { setIsAudioUnlocked(true); if ('speechSynthesis' in window && settings.voice) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(`身分驗證成功，歡迎使用急診智能導航系統。`); utterance.lang = 'zh-TW'; utterance.rate = 0.9; window.speechSynthesis.speak(utterance); } };
@@ -913,7 +925,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
       : (destObj?.guidance ? `正在為您導航至${destObj.label}。${destObj.guidance}` : `已開啟地圖導航，請跟隨畫面上箭頭的指示直走。`);
     
     playVoice(guidanceVoice);
-    setIsNavMenuOpen(false); // 自動收合選單
+    setIsNavMenuOpen(false); 
   };
 
   useEffect(() => {
@@ -970,7 +982,8 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   };
 
   const handleLabNavigation = (labId) => {
-    const labNavMapping = { blood: 'blood', urine: 'screening', ecg: 'ecg', xray: 'xray', us: 'us', ct: 'ct', mri: 'mri', other: null };
+    // V74 核心綁定：urine 與 other 導航至 exam_room
+    const labNavMapping = { blood: 'blood', urine: 'exam_room', ecg: 'ecg', xray: 'xray', us: 'us', ct: 'ct', mri: 'mri', other: 'exam_room' };
     const dest = labNavMapping[labId];
     if (dest) { setActiveTab('nav'); handleNavigation(dest); }
   };
@@ -1074,7 +1087,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     
     const isStart = (row === 9 && col === 7) && is1F;
 
-    // [導航專注模式邏輯]
     const isNavigating = Boolean(activeDestination);
     const shouldHideLandmark = isNavigating && !isStart && !isDestLabel && destId !== null;
 
@@ -1201,6 +1213,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           </div>
         )}
 
+        {/* 護理站呼叫提醒橫幅，加入點擊導航功能 */}
         {recallInfo && (
           <div className="absolute top-4 left-4 right-4 z-[90] animate-[fadeIn_0.3s_ease-out]">
              <div onClick={() => { setActiveTab('nav'); handleNavigation(recallInfo.type); setRecallInfo(null); }} className={`${recallInfo.color} backdrop-blur-xl border border-white/30 rounded-2xl p-5 shadow-xl flex items-start gap-4 cursor-pointer hover:scale-[1.02] transition-transform`}>
@@ -1262,7 +1275,49 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           )}
         </header>
 
-        <div className="flex-1 overflow-y-auto bg-transparent scroll-smooth pb-6">
+        {/* V74: 導航選單絕對置頂 */}
+        {activeTab === 'nav' && (
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl z-[70] shrink-0 border-b border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300 relative">
+            <button
+              onClick={() => setIsNavMenuOpen(!isNavMenuOpen)}
+              className="w-full px-5 py-4 flex items-center justify-between text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Navigation className={`w-6 h-6 ${activeDestination ? 'text-emerald-500' : 'text-sky-500'}`} />
+                <div className="flex flex-col items-start">
+                  <span className="text-sm font-bold text-slate-400 dark:text-slate-500 leading-none mb-1">
+                    {activeDestination ? '目前導航前往' : '您要去哪裡？'}
+                  </span>
+                  <span className="font-black text-xl leading-none">
+                    {activeDestination 
+                      ? (activeDestination === 'find_patient' ? '病患位置' : NAV_DESTINATIONS.find(d => d.id === activeDestination)?.label)
+                      : '請點此選擇目的地...'}
+                  </span>
+                </div>
+              </div>
+              {isNavMenuOpen ? <ChevronUp className="w-7 h-7 text-slate-400" /> : <ChevronDown className="w-7 h-7 text-slate-400" />}
+            </button>
+
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isNavMenuOpen ? 'max-h-[50vh] opacity-100' : 'max-h-0 opacity-0'}`}>
+              <div className="flex flex-col gap-3 px-4 pb-4 overflow-y-auto border-t border-slate-100 dark:border-slate-800 pt-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+                {(isFamilyMode || isProxyMode) && (
+                    <button onClick={() => handleNavigation('find_patient')} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === 'find_patient' ? 'bg-amber-100/90 border-2 border-amber-400 text-amber-700 scale-[1.02]' : 'bg-amber-50/90 border-amber-300 text-amber-700 hover:bg-amber-100'}`}>
+                       <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">👤</span>
+                       <span className="text-xl font-bold pointer-events-none">帶我去找病患</span>
+                    </button>
+                )}
+                {NAV_DESTINATIONS.map(dest => (
+                    <button key={dest.id} onClick={() => handleNavigation(dest.id)} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === dest.id ? 'bg-indigo-100/90 border-2 border-indigo-400 text-indigo-700 scale-[1.02]' : 'bg-white/90 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700'}`}>
+                       <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">{dest.icon}</span>
+                       <span className="text-xl font-bold text-slate-700 dark:text-slate-200 pointer-events-none">{dest.label}</span>
+                    </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto bg-transparent scroll-smooth pb-6 relative">
           
           {/* ================= 1. 看進度 ================= */}
           {activeTab === 'progress' && (
@@ -1341,7 +1396,8 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                      {LAB_TYPES.map(lab => {
                          const data = labStatus[lab.id];
                          const IconComp = lab.icon;
-                         const hasNavMapping = ['blood', 'urine', 'ecg', 'xray', 'us', 'ct', 'mri'].includes(lab.id);
+                         // V74 核心綁定：確保 'other' 也能顯示導航按鈕
+                         const hasNavMapping = ['blood', 'urine', 'ecg', 'xray', 'us', 'ct', 'mri', 'other'].includes(lab.id);
                          if (!data || data.status === 'unprescribed') return null;
                          
                          let cCls = data.status==='reported'?'text-emerald-600':data.status==='done'?'text-teal-600':lab.color==='rose'?'text-rose-600':'text-amber-600';
@@ -1376,47 +1432,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           {/* ================= 2. 找路 ================= */}
           {activeTab === 'nav' && (
             <div className="flex flex-col h-full animate-[fadeIn_0.3s_ease-out]">
-              {/* 頂部收合式導航選單 */}
-              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl z-40 shrink-0 border-b border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300">
-                <button
-                  onClick={() => setIsNavMenuOpen(!isNavMenuOpen)}
-                  className="w-full px-5 py-4 flex items-center justify-between text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-800 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <Navigation className={`w-6 h-6 ${activeDestination ? 'text-emerald-500' : 'text-sky-500'}`} />
-                    <div className="flex flex-col items-start">
-                      <span className="text-sm font-bold text-slate-400 dark:text-slate-500 leading-none mb-1">
-                        {activeDestination ? '目前導航前往' : '您要去哪裡？'}
-                      </span>
-                      <span className="font-black text-xl leading-none">
-                        {activeDestination 
-                          ? (activeDestination === 'find_patient' ? '病患位置' : NAV_DESTINATIONS.find(d => d.id === activeDestination)?.label)
-                          : '請選擇目的地...'}
-                      </span>
-                    </div>
-                  </div>
-                  {isNavMenuOpen ? <ChevronUp className="w-7 h-7 text-slate-400" /> : <ChevronDown className="w-7 h-7 text-slate-400" />}
-                </button>
-
-                {/* 展開的地點列表 */}
-                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isNavMenuOpen ? 'max-h-[50vh] opacity-100' : 'max-h-0 opacity-0'}`}>
-                  <div className="flex flex-col gap-3 px-4 pb-4 overflow-y-auto border-t border-slate-100 dark:border-slate-800 pt-4" style={{ WebkitOverflowScrolling: 'touch' }}>
-                    {(isFamilyMode || isProxyMode) && (
-                        <button onClick={() => handleNavigation('find_patient')} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === 'find_patient' ? 'bg-amber-100/90 border-2 border-amber-400 text-amber-700 scale-[1.02]' : 'bg-amber-50/90 border-amber-300 text-amber-700 hover:bg-amber-100'}`}>
-                           <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">👤</span>
-                           <span className="text-xl font-bold pointer-events-none">帶我去找病患</span>
-                        </button>
-                    )}
-                    {NAV_DESTINATIONS.map(dest => (
-                        <button key={dest.id} onClick={() => handleNavigation(dest.id)} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === dest.id ? 'bg-indigo-100/90 border-2 border-indigo-400 text-indigo-700 scale-[1.02]' : 'bg-white/90 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700'}`}>
-                           <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">{dest.icon}</span>
-                           <span className="text-xl font-bold text-slate-700 dark:text-slate-200 pointer-events-none">{dest.label}</span>
-                        </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
+              
               {activeDestination && navigationState.includes('navigating') && (
                   <div className="bg-sky-50 dark:bg-sky-900/30 p-4 border-b border-sky-100 dark:border-sky-800 flex gap-3 items-start shrink-0 shadow-sm z-30">
                      <div className="bg-sky-200 dark:bg-sky-700 p-2 rounded-full mt-0.5"><Navigation className="text-sky-700 dark:text-sky-300 w-6 h-6"/></div>
@@ -1430,7 +1446,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                   </div>
               )}
 
-              <div className="bg-stone-200/50 dark:bg-slate-800/50 flex flex-col items-center justify-center overflow-hidden relative shadow-inner flex-1 min-h-[300px]">
+              <div className="bg-stone-200/50 dark:bg-slate-800/50 flex flex-col items-center justify-center overflow-hidden relative shadow-inner border-b border-stone-300/50 dark:border-slate-700/50 flex-1 min-h-[300px]">
                 <div className="absolute top-4 right-4 z-50 flex flex-col gap-2">
                   <button onClick={() => handleZoom('in')} className="bg-white/80 backdrop-blur-md p-3 rounded-xl shadow-md"><ZoomIn className="w-6 h-6"/></button>
                   <button onClick={() => handleZoom('out')} className="bg-white/80 backdrop-blur-md p-3 rounded-xl shadow-md"><ZoomOut className="w-6 h-6"/></button>
@@ -2048,17 +2064,18 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
         </aside>
       </div>
 
+      {/* 交班畫面 */}
       {showHandoff && (
           <div className="fixed inset-0 z-[5000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
-             <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl relative border border-slate-200 dark:border-slate-700">
-                <button onClick={()=>setShowHandoff(null)} className="absolute top-6 right-6 p-2 bg-slate-100 dark:bg-slate-700 rounded-full"><X className="w-6 h-6"/></button>
-                <h3 className="text-2xl font-black mb-3 flex items-center gap-3"><RefreshCw className="w-6 h-6 text-amber-500"/> 交班任務給...</h3>
-                <p className="text-sm text-slate-400 mb-8">選擇接手任務的人員，系統將自動移轉權限</p>
-                <div className="grid grid-cols-1 gap-4">
+             <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative border border-slate-200 dark:border-slate-700">
+                <button onClick={()=>setShowHandoff(null)} className="absolute top-6 right-6 p-2 bg-slate-100 dark:bg-slate-700 rounded-full"><X className="w-5 h-5"/></button>
+                <h3 className="text-xl font-black mb-2 flex items-center gap-2"><RefreshCw className="w-5 h-5 text-amber-500"/> 交班任務給...</h3>
+                <p className="text-xs text-slate-400 mb-8">選擇接手任務的人員，系統將自動移轉權限</p>
+                <div className="grid grid-cols-1 gap-3">
                    {STAFF_LIST.filter(s => s.name !== nurseName).map(s => (
-                      <button key={s.empId} onClick={()=>handleHandoff(showHandoff, s.name)} className="p-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center gap-5 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 active:scale-95 transition-all">
-                         <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center"><UserCircle className="w-7 h-7"/></div>
-                         <span className="font-bold text-xl">{s.name}</span>
+                      <button key={s.empId} onClick={()=>handleHandoff(showHandoff, s.name)} className="p-5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center gap-4 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 active:scale-95 transition-all">
+                         <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center"><UserCircle className="w-6 h-6"/></div>
+                         <span className="font-bold text-lg">{s.name}</span>
                       </button>
                    ))}
                 </div>
@@ -2066,80 +2083,65 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
           </div>
       )}
 
+      {/* 代理人授權 QR Code 彈窗 */}
       {showProxyModal && (
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] w-full max-w-md text-center shadow-2xl relative">
-               <button onClick={() => setShowProxyModal(null)} className="absolute top-6 right-6"><X className="w-8 h-8 text-slate-400 hover:text-slate-700"/></button>
-               <h3 className="text-3xl font-black mb-3 text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2"><PenTool className="w-8 h-8"/> 家屬代簽授權</h3>
-               <p className="text-slate-500 text-base mb-8">請代理人掃描專屬條碼。進入前仍需核對病患身分證後四碼。</p>
-               <div className="bg-white p-3 rounded-2xl mb-8 aspect-square w-56 border-2 border-purple-200 mx-auto flex items-center justify-center min-h-[220px]">
-                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo')}?token=${PATIENTS_LIST.find(p=>p.id===showProxyModal)?.token}%26proxy=true`} alt="Proxy QR Code" className="w-full h-full object-contain" />
+            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl relative">
+               <button onClick={() => setShowProxyModal(null)} className="absolute top-4 right-4"><X className="w-6 h-6"/></button>
+               <h3 className="text-2xl font-black mb-2 text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2"><PenTool className="w-6 h-6"/> 家屬代簽授權</h3>
+               <p className="text-slate-500 text-sm mb-6">請代理人掃描專屬條碼。進入前仍需核對病患身分證後四碼。</p>
+               <div className="bg-white p-2 rounded-2xl mb-6 aspect-square w-48 border-2 border-purple-200 mx-auto flex items-center justify-center min-h-[180px]">
+                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo')}?token=${PATIENTS_LIST.find(p=>p.id===showProxyModal)?.token}%26proxy=true`} alt="Proxy QR Code" className="w-full h-full object-contain" />
                </div>
-               <div className="bg-purple-50 dark:bg-purple-900/30 p-4 rounded-xl mb-6">
-                   <div className="text-sm text-purple-600 dark:text-purple-400 font-bold mb-1.5">代理人授權專屬網址</div>
-                   <div className="text-xs font-mono truncate text-slate-600 dark:text-slate-400">...?token=...&proxy=true</div>
+               <div className="bg-purple-50 dark:bg-purple-900/30 p-3 rounded-xl mb-6">
+                   <div className="text-xs text-purple-600 dark:text-purple-400 font-bold mb-1">代理人授權專屬網址</div>
+                   <div className="text-[10px] font-mono truncate text-slate-600 dark:text-slate-400">...?token=...&proxy=true</div>
                </div>
             </div>
           </div>
       )}
 
+      {/* 臨時全域緊急推播設定 (主控台專用) */}
       {showGlobalBroadcast && (
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] w-full max-w-lg shadow-2xl relative border-2 border-orange-500">
-               <button onClick={() => setShowGlobalBroadcast(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-8 h-8"/></button>
-               <h3 className="text-3xl font-black mb-3 text-orange-600 flex items-center gap-3"><Megaphone className="w-8 h-8"/> 發送緊急廣播</h3>
-               <p className="text-slate-500 text-base mb-6 font-bold">此訊息將<span className="text-rose-500">強制突破靜音設定</span>，在全區病患手機以最高音量播報並全螢幕閃爍。請謹慎使用。</p>
+            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl relative border-2 border-orange-500">
+               <button onClick={() => setShowGlobalBroadcast(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><X className="w-6 h-6"/></button>
+               <h3 className="text-2xl font-black mb-2 text-orange-600 flex items-center gap-2"><Megaphone className="w-6 h-6"/> 發送臨時緊急推播</h3>
+               <p className="text-slate-500 text-sm mb-6 font-bold">此訊息將<span className="text-rose-500">強制突破靜音設定</span>，在全區病患手機以最高音量播報並全螢幕閃爍。請謹慎使用。</p>
                
-               <div className="flex flex-col gap-2 mb-6">
-                  <span className="text-sm font-bold text-slate-400">快速套版：</span>
-                  <div className="flex flex-wrap gap-2">
-                     <button onClick={() => setCustomBroadcastText('急診內科診間目前發生持刀攻擊事件請各位立即遠離現場,並遵循醫護人員指示以確保安全。')} className="bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-rose-100 transition-colors">暴力事件</button>
-                     <button onClick={() => setCustomBroadcastText('本院急診已啟動大量傷患應變。看診與檢查時間將延長，請病友與家屬配合並諒解。')} className="bg-orange-50 text-orange-700 border border-orange-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-100 transition-colors">大量傷患</button>
-                     <button onClick={() => setCustomBroadcastText('急診室有緊急病人急救中，看診、檢查時間將延長，請病友與家屬配合並諒解。')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">一級急救</button>
-                  </div>
-               </div>
-
                <textarea 
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 outline-none focus:border-orange-500 resize-none h-40 text-xl font-bold" 
-                  placeholder="請輸入警報內容..."
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 outline-none focus:border-orange-500 resize-none h-32 text-lg font-bold" 
+                  placeholder="請輸入警報內容（例：發生火警，請依循綠色指示燈前往大門疏散）"
                   value={customBroadcastText}
                   onChange={(e) => setCustomBroadcastText(e.target.value)}
                ></textarea>
                
-               <div className="flex gap-4 mt-8">
-                  <button onClick={() => setShowGlobalBroadcast(false)} className="flex-1 py-5 font-bold rounded-2xl bg-slate-100 text-slate-500 text-xl">取消</button>
-                  <button onClick={handleSendGlobalBroadcast} disabled={!customBroadcastText.trim()} className={`flex-[2] py-5 font-black rounded-2xl text-white transition-all shadow-lg text-xl ${customBroadcastText.trim() ? 'bg-orange-600 hover:bg-orange-700 active:scale-95' : 'bg-slate-300 cursor-not-allowed'}`}>立即發送推播</button>
+               <div className="flex gap-3 mt-6">
+                  <button onClick={() => setShowGlobalBroadcast(false)} className="flex-1 py-4 font-bold rounded-xl bg-slate-100 text-slate-500">取消</button>
+                  <button onClick={handleSendGlobalBroadcast} disabled={!customBroadcastText.trim()} className={`flex-[2] py-4 font-black rounded-xl text-white transition-all shadow-lg ${customBroadcastText.trim() ? 'bg-orange-600 hover:bg-orange-700 active:scale-95' : 'bg-slate-300 cursor-not-allowed'}`}>立即發送推播</button>
                </div>
             </div>
           </div>
       )}
 
+      {/* 衛教跑馬燈設定 (主控台專用) */}
       {showMarqueeConfig && (
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] w-full max-w-lg shadow-2xl relative border-2 border-sky-400">
-               <button onClick={() => setShowMarqueeConfig(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-8 h-8"/></button>
-               <h3 className="text-3xl font-black mb-3 text-sky-600 flex items-center gap-3"><Info className="w-8 h-8"/> 設定衛教跑馬燈</h3>
-               <p className="text-slate-500 text-base mb-8 font-bold">更改的文字將即時顯示於全區病患的手機頂端。</p>
+            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] w-full max-w-md shadow-2xl relative border-2 border-sky-400">
+               <button onClick={() => setShowMarqueeConfig(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700"><X className="w-6 h-6"/></button>
+               <h3 className="text-2xl font-black mb-2 text-sky-600 flex items-center gap-2"><Info className="w-6 h-6"/> 設定衛教跑馬燈</h3>
+               <p className="text-slate-500 text-sm mb-6 font-bold">更改的文字將即時顯示於全區病患的手機頂端。</p>
                
-               <div className="flex flex-col gap-2 mb-6">
-                  <span className="text-sm font-bold text-slate-400">快速套版：</span>
-                  <div className="flex flex-wrap gap-2">
-                     <button onClick={() => setMarqueeInputText('目前急診留觀病患人數較多若您為輕症患者或希望轉至住家附近之醫療院所，請洽護理站醫護人員,我們將協助您辦理轉院事宜。')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors">滿床轉院宣導</button>
-                     <button onClick={() => setMarqueeInputText('國內新增腦脊髓膜炎確定病例,籲請民眾注意呼吸道衛生,出現疑似症狀應儘速就醫')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors">腦脊髓膜炎</button>
-                     <button onClick={() => setMarqueeInputText('腸病毒好發季,籲請民眾落實肥皂勤洗手及環境清消並留意嬰幼兒重症前兆病徵。')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors">腸病毒</button>
-                  </div>
-               </div>
-
                <textarea 
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 outline-none focus:border-sky-500 resize-none h-40 text-lg font-bold" 
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 outline-none focus:border-sky-500 resize-none h-32 text-base font-bold" 
                   placeholder="請輸入衛教或宣導文字..."
                   value={marqueeInputText}
                   onChange={(e) => setMarqueeInputText(e.target.value)}
                ></textarea>
                
-               <div className="flex gap-4 mt-8">
-                  <button onClick={() => setShowMarqueeConfig(false)} className="flex-1 py-5 font-bold rounded-2xl bg-slate-100 text-slate-500 text-xl">取消</button>
-                  <button onClick={handleUpdateMarquee} className="flex-[2] py-5 font-black rounded-2xl text-white transition-all shadow-lg text-xl bg-sky-500 hover:bg-sky-600 active:scale-95">更新全區跑馬燈</button>
+               <div className="flex gap-3 mt-6">
+                  <button onClick={() => setShowMarqueeConfig(false)} className="flex-1 py-4 font-bold rounded-xl bg-slate-100 text-slate-500">取消</button>
+                  <button onClick={handleUpdateMarquee} className="flex-[2] py-4 font-black rounded-xl text-white transition-all shadow-lg bg-sky-500 hover:bg-sky-600 active:scale-95">更新全區跑馬燈</button>
                </div>
             </div>
           </div>
@@ -2148,6 +2150,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   );
 }
 
+// ================= 錯誤防護罩 =================
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, errorMsg: '' }; }
   static getDerivedStateFromError(error) { return { hasError: true, errorMsg: error.message }; }
@@ -2155,10 +2158,10 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-rose-50 flex items-center justify-center p-6">
-          <div className="bg-white p-10 rounded-[2.5rem] shadow-xl max-w-lg w-full text-center border-2 border-rose-100">
-             <AlertTriangle className="w-24 h-24 text-rose-500 mx-auto mb-6 animate-pulse" />
-             <h1 className="text-3xl font-black text-slate-800 mb-4">系統安全防護已啟動</h1>
-             <p className="text-rose-600 font-bold mb-4 bg-rose-50 p-4 rounded-xl break-words text-lg">{String(this.state.errorMsg)}</p>
+          <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg w-full text-center border-2 border-rose-100">
+             <AlertTriangle className="w-20 h-20 text-rose-500 mx-auto mb-6 animate-pulse" />
+             <h1 className="text-2xl font-black text-slate-800 mb-4">系統安全防護已啟動</h1>
+             <p className="text-rose-600 font-bold mb-4 bg-rose-50 p-3 rounded-lg break-words">{String(this.state.errorMsg)}</p>
           </div>
         </div>
       );
