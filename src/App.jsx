@@ -1,7 +1,7 @@
-// [V70 連線狀態視覺化與一鍵回復住院版] 
-// [V71 緊急推播防重複與單一覆蓋修正版] 
-// 1. 修正緊急推播邏輯：發送新的全域廣播時，自動覆蓋舊廣播，確保病人端只會收到最後一筆。
-// 2. 嚴格保留所有核心連線、主控台邏輯與 V70 的功能。
+// [V72 導航選單置頂收合式優化版] 
+// 1. 將導航地點列表移至地圖上方，並改為收合式選單設計，改善手機版下拉滑動體驗。
+// 2. 點擊導航地點後，選單會自動收合，將最大畫面留給地圖導航。
+// 3. 嚴格保留所有核心連線、主控台邏輯與 V71 的功能。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -521,7 +521,6 @@ function MainApp() {
       const newId = Math.random().toString(36).substr(2, 9);
       const newObj = { ...data, timestamp: Date.now() };
       
-      // 核心修正：如果是全域緊急推播，先過濾掉舊的，確保只保留最新的一筆
       setCommands(prev => { 
          const filteredPrev = data.action === 'custom_emergency' 
             ? prev.filter(c => c.action !== 'custom_emergency') 
@@ -532,7 +531,6 @@ function MainApp() {
       });
       
       if (user && db) { 
-          // 若為全域推播，也同步清理 Firebase 上舊的指令
           if (data.action === 'custom_emergency') {
               const oldCmds = commands.filter(c => c.action === 'custom_emergency');
               oldCmds.forEach(async (c) => {
@@ -679,7 +677,7 @@ function MainApp() {
                 </div>
             </div>
 
-            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V70</p>
+            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V72</p>
             <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mb-8 text-center max-w-lg">若要測試網址獨立分流，請在網址後方加上參數：<br/><span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mt-2 inline-block shadow-inner">?view=patient</span> 或 <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 shadow-inner">?view=station</span></p>
             
             <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -814,6 +812,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   const [openFaqIndex, setOpenFaqIndex] = useState(null); 
   const [hasNotifiedBilling, setHasNotifiedBilling] = useState(false);
   const processedCmdsRef = useRef(new Set()); 
+  const [isNavMenuOpen, setIsNavMenuOpen] = useState(true);
 
   const { currentStep, currentStatus, waitingCount, labStatus, reminders, rfid, sosEnabled, consents, billingPaidAt } = patientState;
   
@@ -899,7 +898,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
 
   const handleNavigation = (destId) => {
     setActiveDestination(destId); setCurrentFloor('1F'); setNavigationState('navigating_1f');
-    // 強制將起點設為大廳，確保無論哪種身份都有完整的地圖路線可看
     const startNode = [9, 7]; 
     let destNode;
     if (destId === 'icu') destNode = [3,1]; 
@@ -915,6 +913,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
       : (destObj?.guidance ? `正在為您導航至${destObj.label}。${destObj.guidance}` : `已開啟地圖導航，請跟隨畫面上箭頭的指示直走。`);
     
     playVoice(guidanceVoice);
+    setIsNavMenuOpen(false); // 自動收合選單
   };
 
   useEffect(() => {
@@ -1075,7 +1074,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     
     const isStart = (row === 9 && col === 7) && is1F;
 
-    // [導航專注模式邏輯]：如果正在導航 (activeDestination 存在)，且這個格子有地標，但不是目標、也不是起點，就不顯示內容與標籤
+    // [導航專注模式邏輯]
     const isNavigating = Boolean(activeDestination);
     const shouldHideLandmark = isNavigating && !isStart && !isDestLabel && destId !== null;
 
@@ -1202,7 +1201,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           </div>
         )}
 
-        {/* 護理站呼叫提醒橫幅，加入點擊導航功能 */}
         {recallInfo && (
           <div className="absolute top-4 left-4 right-4 z-[90] animate-[fadeIn_0.3s_ease-out]">
              <div onClick={() => { setActiveTab('nav'); handleNavigation(recallInfo.type); setRecallInfo(null); }} className={`${recallInfo.color} backdrop-blur-xl border border-white/30 rounded-2xl p-5 shadow-xl flex items-start gap-4 cursor-pointer hover:scale-[1.02] transition-transform`}>
@@ -1378,7 +1376,61 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           {/* ================= 2. 找路 ================= */}
           {activeTab === 'nav' && (
             <div className="flex flex-col h-full animate-[fadeIn_0.3s_ease-out]">
-              <div className="bg-stone-200/50 dark:bg-slate-800/50 flex flex-col items-center justify-center overflow-hidden relative shadow-inner border-b border-stone-300/50 dark:border-slate-700/50 flex-1 min-h-[300px]">
+              {/* 頂部收合式導航選單 */}
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl z-40 shrink-0 border-b border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300">
+                <button
+                  onClick={() => setIsNavMenuOpen(!isNavMenuOpen)}
+                  className="w-full px-5 py-4 flex items-center justify-between text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-800 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Navigation className={`w-6 h-6 ${activeDestination ? 'text-emerald-500' : 'text-sky-500'}`} />
+                    <div className="flex flex-col items-start">
+                      <span className="text-sm font-bold text-slate-400 dark:text-slate-500 leading-none mb-1">
+                        {activeDestination ? '目前導航前往' : '您要去哪裡？'}
+                      </span>
+                      <span className="font-black text-xl leading-none">
+                        {activeDestination 
+                          ? (activeDestination === 'find_patient' ? '病患位置' : NAV_DESTINATIONS.find(d => d.id === activeDestination)?.label)
+                          : '請選擇目的地...'}
+                      </span>
+                    </div>
+                  </div>
+                  {isNavMenuOpen ? <ChevronUp className="w-7 h-7 text-slate-400" /> : <ChevronDown className="w-7 h-7 text-slate-400" />}
+                </button>
+
+                {/* 展開的地點列表 */}
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isNavMenuOpen ? 'max-h-[50vh] opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <div className="flex flex-col gap-3 px-4 pb-4 overflow-y-auto border-t border-slate-100 dark:border-slate-800 pt-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    {(isFamilyMode || isProxyMode) && (
+                        <button onClick={() => handleNavigation('find_patient')} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === 'find_patient' ? 'bg-amber-100/90 border-2 border-amber-400 text-amber-700 scale-[1.02]' : 'bg-amber-50/90 border-amber-300 text-amber-700 hover:bg-amber-100'}`}>
+                           <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">👤</span>
+                           <span className="text-xl font-bold pointer-events-none">帶我去找病患</span>
+                        </button>
+                    )}
+                    {NAV_DESTINATIONS.map(dest => (
+                        <button key={dest.id} onClick={() => handleNavigation(dest.id)} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === dest.id ? 'bg-indigo-100/90 border-2 border-indigo-400 text-indigo-700 scale-[1.02]' : 'bg-white/90 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700'}`}>
+                           <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">{dest.icon}</span>
+                           <span className="text-xl font-bold text-slate-700 dark:text-slate-200 pointer-events-none">{dest.label}</span>
+                        </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {activeDestination && navigationState.includes('navigating') && (
+                  <div className="bg-sky-50 dark:bg-sky-900/30 p-4 border-b border-sky-100 dark:border-sky-800 flex gap-3 items-start shrink-0 shadow-sm z-30">
+                     <div className="bg-sky-200 dark:bg-sky-700 p-2 rounded-full mt-0.5"><Navigation className="text-sky-700 dark:text-sky-300 w-6 h-6"/></div>
+                     <p className="text-sky-800 dark:text-sky-200 text-base font-bold leading-relaxed">
+                        {activeDestination === 'find_patient' ? (
+                          <>正在帶您尋找<span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">病患位置</span>。請跟隨地圖上的箭頭指示前進。</>
+                        ) : (
+                          <>正在為您導航至 <span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.label || '目標'}</span>。{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.guidance || '請跟隨地圖上的箭頭指示前進。'}</>
+                        )}
+                     </p>
+                  </div>
+              )}
+
+              <div className="bg-stone-200/50 dark:bg-slate-800/50 flex flex-col items-center justify-center overflow-hidden relative shadow-inner flex-1 min-h-[300px]">
                 <div className="absolute top-4 right-4 z-50 flex flex-col gap-2">
                   <button onClick={() => handleZoom('in')} className="bg-white/80 backdrop-blur-md p-3 rounded-xl shadow-md"><ZoomIn className="w-6 h-6"/></button>
                   <button onClick={() => handleZoom('out')} className="bg-white/80 backdrop-blur-md p-3 rounded-xl shadow-md"><ZoomOut className="w-6 h-6"/></button>
@@ -1414,38 +1466,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                       )}
                     </div>
                   </div>
-                </div>
-              </div>
-              
-              {activeDestination && navigationState.includes('navigating') && (
-                  <div className="bg-sky-50 dark:bg-sky-900/30 p-4 border-b border-sky-100 dark:border-sky-800 flex gap-3 items-start shrink-0 shadow-sm z-50">
-                     <div className="bg-sky-200 dark:bg-sky-700 p-2 rounded-full mt-0.5"><Navigation className="text-sky-700 dark:text-sky-300 w-6 h-6"/></div>
-                     <p className="text-sky-800 dark:text-sky-200 text-base font-bold leading-relaxed">
-                        {activeDestination === 'find_patient' ? (
-                          <>正在帶您尋找<span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">病患位置</span>。請跟隨地圖上的箭頭指示前進。</>
-                        ) : (
-                          <>正在為您導航至 <span className="text-sky-600 dark:text-sky-300 underline underline-offset-4 decoration-2 mx-1">{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.label || '目標'}</span>。{NAV_DESTINATIONS.find(d=>d.id===activeDestination)?.guidance || '請跟隨地圖上的箭頭指示前進。'}</>
-                        )}
-                     </p>
-                  </div>
-              )}
-
-              {/* 垂直滾動直式選單 (加強觸控與滾動設定，解鎖家屬端選單) */}
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl z-10 shrink-0 border-t border-white/50 dark:border-slate-700/50 pb-6 pt-4 w-full">
-                <div className="text-sm text-slate-500 font-bold px-4 mb-3">您要去哪裡？</div>
-                <div className="flex flex-col gap-3 px-4 pb-4 overflow-y-auto max-h-[40vh] w-full" style={{ WebkitOverflowScrolling: 'touch' }}>
-                  {(isFamilyMode || isProxyMode) && (
-                      <button onClick={() => handleNavigation('find_patient')} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === 'find_patient' ? 'bg-amber-100/90 border-2 border-amber-400 text-amber-700 scale-[1.02]' : 'bg-amber-50/90 border-amber-300 text-amber-700 hover:bg-amber-100'}`}>
-                         <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">👤</span>
-                         <span className="text-xl font-bold pointer-events-none">帶我去找病患</span>
-                      </button>
-                  )}
-                  {NAV_DESTINATIONS.map(dest => (
-                      <button key={dest.id} onClick={() => handleNavigation(dest.id)} className={`w-full p-4 rounded-2xl flex items-center justify-start gap-4 transition-all border shadow-sm touch-manipulation ${activeDestination === dest.id ? 'bg-indigo-100/90 border-2 border-indigo-400 text-indigo-700 scale-[1.02]' : 'bg-white/90 border-slate-200 hover:bg-slate-50'}`}>
-                         <span className="text-4xl drop-shadow-sm leading-none pointer-events-none shrink-0">{dest.icon}</span>
-                         <span className="text-xl font-bold text-slate-700 pointer-events-none">{dest.label}</span>
-                      </button>
-                  ))}
                 </div>
               </div>
             </div>
