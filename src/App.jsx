@@ -1,8 +1,8 @@
-// [V77 完整狀態連動與動態等待人數版] 
-// 1. 移除首頁捷徑按鈕，恢復完整的文字分流參數說明。
-// 2. 升級 evaluateProgress 邏輯：加入住院同意書(留觀)與批價(離院)與第4階段的自動綁定。
-// 3. 病患端前方等待人數動態化：檢查與離院時顯示0，看報告時重新計算排隊人數。
-// 4. 嚴格保留所有核心連線、主控台邏輯與 V76 的功能。
+// [V80 授權代簽隱私保護與 OMO 整合版] 
+// 1. 主控台點擊「授權代簽」改為推播至病患端手機，保護隱私。
+// 2. 行動護理機點擊「授權代簽」維持本地顯示，利於床邊掃描。
+// 3. 病患端新增接收代簽推播並彈出專屬 QR Code 及複製連結功能。
+// 4. 嚴格保留所有核心連線、主控台邏輯與 V79 的功能。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -195,18 +195,14 @@ const getMergedState = (fetchedState, patientId) => {
   };
 };
 
-// V77 核心邏輯：全面評估所有狀態，計算當前的流程步驟與文字 (含住院與批價)
 const evaluateProgress = (state) => {
-  // 1. 最高優先級：批價 (離院)
   if (state.billingPaidAt) {
       return { currentStep: 4, currentStatus: '已繳費 (預計30分後自動結案)' };
   }
-  // 2. 次高優先級：住院同意書 (留觀)
   if (state.consents?.admission && state.consents.admission !== 'disabled') {
       return { currentStep: 4, currentStatus: '安排留觀 / 住院中' };
   }
 
-  // 3. 一般進度：檢驗進度
   const activeLabs = Object.values(state.labStatus || {}).filter(l => l.status !== 'unprescribed');
   if (activeLabs.length === 0) {
       return { currentStep: 1, currentStatus: '等候醫師看診/開單' };
@@ -377,7 +373,9 @@ function MainApp() {
   });
   
   const [systemConfig, setSystemConfig] = useState({ 
-    marqueeText: '【急診衛教宣導】為防範呼吸道傳染病，進入醫療院所請全程配戴口罩。若有發燒或咳嗽症狀，請立即告知護理人員，感謝您的配合。' 
+    marqueeText: '【急診衛教宣導】為防範呼吸道傳染病，進入醫療院所請全程配戴口罩。若有發燒或咳嗽症狀，請立即告知護理人員，感謝您的配合。',
+    savedBroadcastTpls: [],
+    savedMarqueeTpls: []
   });
 
   const toggleSetting = (key) => setSettings(prev => ({ ...prev, [key]: !prev[key] }));
@@ -704,9 +702,8 @@ function MainApp() {
                 </div>
             </div>
 
-            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V77</p>
+            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V80</p>
             
-            {/* V77 核心優化：恢復完整的文字分流參數說明 */}
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-xl leading-relaxed">
               若要測試網址獨立分流，請在網址後方加上以下參數：<br/>
               病患端：<span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sky-600 mx-1">?view=patient</span><br/>
@@ -833,6 +830,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   const [customEmergencyAlert, setCustomEmergencyAlert] = useState(null);
   
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showProxyModal, setShowProxyModal] = useState(false); // V80: 病患端新增授權 QR Code 視窗狀態
   const [activeConsentModal, setActiveConsentModal] = useState(null);
   const [activeDestination, setActiveDestination] = useState(null);
   const [navigationState, setNavigationState] = useState('idle'); 
@@ -851,11 +849,10 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
 
   const { currentStep, currentStatus, waitingCount, labStatus, reminders, rfid, sosEnabled, consents, billingPaidAt } = patientState;
   
-  // V77 動態計算顯示的等待人數
   const getDisplayWaitingCount = () => {
-    if (currentStep === 2 || currentStep === 4) return 0; // 檢查/檢驗中、離院/留觀時顯示 0
-    if (currentStep === 3) return Math.max(1, Math.floor(waitingCount / 3)); // 報告出爐後，重算排隊等待醫師解說的人數
-    return waitingCount; // 第1階段：看診中，顯示真實排隊人數
+    if (currentStep === 2 || currentStep === 4) return 0; 
+    if (currentStep === 3) return Math.max(1, Math.floor(waitingCount / 3)); 
+    return waitingCount; 
   };
   const displayWaitingCount = getDisplayWaitingCount();
 
@@ -999,6 +996,13 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
             playVoice(`${currentPatient.name}！輪到您了！請立刻前往急診一診看診。`, true);
             ackCommand(myCmd.id); 
          } 
+         // V80 核心修正：接收護理站的主動推播，彈出授權 QR Code 視窗
+         else if (myCmd.action === 'request_proxy_auth') {
+            setShowProxyModal(true);
+            triggerVibe([1000, 500, 1000]);
+            playVoice(`${currentPatient.name}您好，護理站已發送同意書代簽授權，請讓代理人掃描畫面上的條碼。`);
+            ackCommand(myCmd.id);
+         }
          else { 
             setRecallInfo({ type: myCmd.action, title: myCmd.action === 'nurse' ? '護理站正在找您' : 'X光室正在呼叫您', desc: '點擊此處開啟導航前往。', icon: myCmd.action==='nurse' ? '👩‍⚕️':'☢️', color: myCmd.action==='nurse'?'bg-indigo-600':'bg-sky-600' }); 
             triggerVibe([800, 400, 800]); 
@@ -1558,6 +1562,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                      <button onClick={() => handleHelpRequest('ivPain')} disabled={helpRequests.ivPain} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivPain ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
                          <span className="text-5xl">{helpRequests.ivPain ? '⏳' : '🩹'}</span><span className="font-bold text-xl">{helpRequests.ivPain ? '已通知護理師' : '漏血/會痛'}</span>
                      </button>
+                     {/* 新增其他需求按鈕 */}
                      <button onClick={() => handleHelpRequest('other')} disabled={helpRequests.other} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center justify-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.other ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
                          <span className="text-5xl">{helpRequests.other ? '⏳' : '💬'}</span><span className="font-bold text-2xl">{helpRequests.other ? '已通知護理師' : '其他需求'}</span>
                      </button>
@@ -1632,6 +1637,27 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                  )}
               </div>
            </div>
+        )}
+
+        {/* V80: 病患端授權代簽 Modal */}
+        {showProxyModal && (
+          <div className="absolute inset-0 z-[100] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
+            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl relative">
+               <button onClick={() => setShowProxyModal(false)} className="absolute top-4 right-4"><X className="w-7 h-7"/></button>
+               <h3 className="text-2xl font-black mb-2 text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2"><PenTool className="w-6 h-6"/> 家屬代簽授權</h3>
+               <p className="text-slate-500 text-sm mb-6">護理站已開放代簽權限。請代理人掃描下方條碼，或點擊複製連結傳送給不在現場的家屬。</p>
+               <div className="bg-white p-2 rounded-2xl mb-6 aspect-square w-48 border-2 border-purple-200 mx-auto flex items-center justify-center min-h-[180px]">
+                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo')}?token=${currentPatient.token}%26proxy=true`} alt="Proxy QR Code" className="w-full h-full object-contain" />
+               </div>
+               <button onClick={() => {
+                   const pUrl = `${typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo'}?token=${currentPatient.token}&proxy=true`;
+                   navigator.clipboard.writeText(`【ER即時通】家屬代簽專屬連結：\n${pUrl}`);
+                   alert('代簽連結已複製！可貼上至 Line 傳送給家屬');
+               }} className="w-full bg-purple-500 text-white font-bold py-4 rounded-xl active:scale-95 flex items-center justify-center gap-2 shadow-md text-lg">
+                   <Share2 className="w-5 h-5"/> 複製代簽連結
+               </button>
+            </div>
+          </div>
         )}
 
         {showShareModal && (
@@ -1753,6 +1779,16 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast(`同意書狀態已切換為：${next === 'pending' ? '待簽署' : next === 'signed' ? '已簽署' : '未開立'}`);
   };
 
+  // V80 核心修正：主控台點擊授權代簽的分流邏輯
+  const handleProxyAuth = (pId) => {
+    if (role === 'station') {
+        createCommand({ patientId: pId, action: 'request_proxy_auth' });
+        showToast('✅ 已發送授權畫面至病患手機！若需床邊掃碼請使用行動公務機。');
+    } else {
+        setShowProxyModal(pId);
+    }
+  };
+
   const handleDischarge = (pId) => { 
     updatePatientState(pId, { tokenExpired: true, currentStep: 4, currentStatus: '已離院' }); 
     alerts.filter(a => a.patientId === pId).forEach(a => resolveAlert(a.id));
@@ -1823,10 +1859,46 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     showToast('全區緊急廣播已送出！');
   };
 
+  const handleSaveBroadcastTpl = () => {
+    if (!customBroadcastText.trim()) return;
+    const currentTpls = systemConfig?.savedBroadcastTpls || [];
+    if (!currentTpls.includes(customBroadcastText.trim())) {
+        updateSystemConfig({ savedBroadcastTpls: [...currentTpls, customBroadcastText.trim()] });
+        showToast('已儲存為廣播自訂範本！');
+    } else {
+        showToast('此範本已存在！');
+    }
+  };
+
+  const handleDeleteBroadcastTpl = (e, tpl) => {
+    e.stopPropagation();
+    const currentTpls = systemConfig?.savedBroadcastTpls || [];
+    updateSystemConfig({ savedBroadcastTpls: currentTpls.filter(t => t !== tpl) });
+    showToast('自訂範本已移除');
+  };
+
   const handleUpdateMarquee = () => {
     updateSystemConfig({ marqueeText: marqueeInputText });
     setShowMarqueeConfig(false);
     showToast('全區衛教跑馬燈已更新！');
+  };
+
+  const handleSaveMarqueeTpl = () => {
+    if (!marqueeInputText.trim()) return;
+    const currentTpls = systemConfig?.savedMarqueeTpls || [];
+    if (!currentTpls.includes(marqueeInputText.trim())) {
+        updateSystemConfig({ savedMarqueeTpls: [...currentTpls, marqueeInputText.trim()] });
+        showToast('已儲存為跑馬燈自訂範本！');
+    } else {
+        showToast('此範本已存在！');
+    }
+  };
+
+  const handleDeleteMarqueeTpl = (e, tpl) => {
+    e.stopPropagation();
+    const currentTpls = systemConfig?.savedMarqueeTpls || [];
+    updateSystemConfig({ savedMarqueeTpls: currentTpls.filter(t => t !== tpl) });
+    showToast('自訂範本已移除');
   };
 
   const handleResetAllPatients = () => {
@@ -1998,7 +2070,8 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                               <div className="flex gap-2 mb-3 flex-wrap border-b border-slate-100 dark:border-slate-700 pb-3">
                                  <button onClick={()=>createCommand({patientId: p.id, action: 'urgent_call'})} className="px-3 py-1.5 bg-rose-100 text-rose-700 rounded text-xs font-bold border border-rose-200 hover:bg-rose-200 active:scale-95 transition-all">🔊 強制叫號</button>
                                  <button onClick={()=>updatePatientState(p.id, {sosEnabled: !st.sosEnabled})} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${st.sosEnabled ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{st.sosEnabled ? '已准SOS' : '開放SOS'}</button>
-                                 <button onClick={()=>setShowProxyModal(p.id)} className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded text-xs font-bold border border-purple-200 hover:bg-purple-200 active:scale-95 transition-all">👨‍⚖️ 授權代簽</button>
+                                 {/* V80 核心修正：點擊授權代簽後套用隱私防護邏輯 */}
+                                 <button onClick={()=>handleProxyAuth(p.id)} className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded text-xs font-bold border border-purple-200 hover:bg-purple-200 active:scale-95 transition-all">👨‍⚖️ 授權代簽</button>
                                  <button onClick={()=>toggleConsent(p.id, 'ct')} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${st.consents.ct==='pending'?'bg-amber-50 text-amber-600 border-amber-200':st.consents.ct==='signed'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}`}>CT同意</button>
                                  <button onClick={()=>toggleConsent(p.id, 'admission')} className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${st.consents.admission==='pending'?'bg-amber-50 text-amber-600 border-amber-200':st.consents.admission==='signed'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}`}>住院同意</button>
                               </div>
@@ -2148,13 +2221,13 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
           </div>
       )}
 
-      {/* 代理人授權 QR Code 彈窗 */}
+      {/* V80: 行動護理機專用 - 本地顯示的代理人授權 QR Code 彈窗 */}
       {showProxyModal && (
           <div className="fixed inset-0 z-[6000] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
             <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl relative">
                <button onClick={() => setShowProxyModal(null)} className="absolute top-4 right-4"><X className="w-6 h-6"/></button>
                <h3 className="text-2xl font-black mb-2 text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2"><PenTool className="w-6 h-6"/> 家屬代簽授權</h3>
-               <p className="text-slate-500 text-sm mb-6">請代理人掃描專屬條碼。進入前仍需核對病患身分證後四碼。</p>
+               <p className="text-slate-500 text-sm mb-6">請將本設備交給代理人掃描專屬條碼。進入前仍需核對病患身分證後四碼。</p>
                <div className="bg-white p-2 rounded-2xl mb-6 aspect-square w-48 border-2 border-purple-200 mx-auto flex items-center justify-center min-h-[180px]">
                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo')}?token=${PATIENTS_LIST.find(p=>p.id===showProxyModal)?.token}%26proxy=true`} alt="Proxy QR Code" className="w-full h-full object-contain" />
                </div>
@@ -2174,9 +2247,29 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                <h3 className="text-2xl font-black mb-2 text-orange-600 flex items-center gap-2"><Megaphone className="w-6 h-6"/> 發送臨時緊急推播</h3>
                <p className="text-slate-500 text-sm mb-6 font-bold">此訊息將<span className="text-rose-500">強制突破靜音設定</span>，在全區病患手機以最高音量播報並全螢幕閃爍。請謹慎使用。</p>
                
+               <div className="flex flex-col gap-2 mb-4">
+                  <span className="text-sm font-bold text-slate-400">快速套版：</span>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-2 hide-scrollbar">
+                     <button onClick={() => setCustomBroadcastText('急診內科診間目前發生持刀攻擊事件請各位立即遠離現場,並遵循醫護人員指示以確保安全。')} className="bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-rose-100 transition-colors shrink-0">暴力事件</button>
+                     <button onClick={() => setCustomBroadcastText('本院急診已啟動大量傷患應變。看診與檢查時間將延長，請病友與家屬配合並諒解。')} className="bg-orange-50 text-orange-700 border border-orange-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-100 transition-colors shrink-0">大量傷患</button>
+                     <button onClick={() => setCustomBroadcastText('急診室有緊急病人急救中，看診、檢查時間將延長，請病友與家屬配合並諒解。')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors shrink-0">一級急救</button>
+                     
+                     {(systemConfig?.savedBroadcastTpls || []).map((tpl, idx) => (
+                        <div key={`bc-tpl-${idx}`} className="relative group inline-flex items-center">
+                           <button onClick={() => setCustomBroadcastText(tpl)} className="bg-indigo-50 text-indigo-700 border border-indigo-200 pl-3 pr-8 py-2 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors truncate max-w-[200px]" title={tpl}>{tpl}</button>
+                           <button onClick={(e) => handleDeleteBroadcastTpl(e, tpl)} className="absolute right-1 w-6 h-6 flex items-center justify-center text-indigo-400 hover:text-rose-500 hover:bg-rose-100 rounded-md transition-colors"><X className="w-4 h-4"/></button>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+
+               <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-bold text-slate-400">輸入警報內容：</span>
+                  <button onClick={handleSaveBroadcastTpl} disabled={!customBroadcastText.trim()} className="text-xs font-bold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200 disabled:opacity-50 flex items-center gap-1 shadow-sm transition-all active:scale-95"><PenTool className="w-3 h-3"/> 儲存為範本</button>
+               </div>
                <textarea 
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 outline-none focus:border-orange-500 resize-none h-32 text-lg font-bold" 
-                  placeholder="請輸入警報內容（例：發生火警，請依循綠色指示燈前往大門疏散）"
+                  placeholder="請輸入警報內容..."
                   value={customBroadcastText}
                   onChange={(e) => setCustomBroadcastText(e.target.value)}
                ></textarea>
@@ -2197,6 +2290,26 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                <h3 className="text-2xl font-black mb-2 text-sky-600 flex items-center gap-2"><Info className="w-6 h-6"/> 設定衛教跑馬燈</h3>
                <p className="text-slate-500 text-sm mb-6 font-bold">更改的文字將即時顯示於全區病患的手機頂端。</p>
                
+               <div className="flex flex-col gap-2 mb-4">
+                  <span className="text-sm font-bold text-slate-400">快速套版：</span>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-2 hide-scrollbar">
+                     <button onClick={() => setMarqueeInputText('目前急診留觀病患人數較多若您為輕症患者或希望轉至住家附近之醫療院所，請洽護理站醫護人員,我們將協助您辦理轉院事宜。')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors shrink-0">滿床轉院宣導</button>
+                     <button onClick={() => setMarqueeInputText('國內新增腦脊髓膜炎確定病例,籲請民眾注意呼吸道衛生,出現疑似症狀應儘速就醫')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors shrink-0">腦脊髓膜炎</button>
+                     <button onClick={() => setMarqueeInputText('腸病毒好發季,籲請民眾落實肥皂勤洗手及環境清消並留意嬰幼兒重症前兆病徵。')} className="bg-sky-50 text-sky-700 border border-sky-200 px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors shrink-0">腸病毒</button>
+                     
+                     {(systemConfig?.savedMarqueeTpls || []).map((tpl, idx) => (
+                        <div key={`mq-tpl-${idx}`} className="relative group inline-flex items-center">
+                           <button onClick={() => setMarqueeInputText(tpl)} className="bg-teal-50 text-teal-700 border border-teal-200 pl-3 pr-8 py-2 rounded-lg text-xs font-bold hover:bg-teal-100 transition-colors truncate max-w-[200px]" title={tpl}>{tpl}</button>
+                           <button onClick={(e) => handleDeleteMarqueeTpl(e, tpl)} className="absolute right-1 w-6 h-6 flex items-center justify-center text-teal-400 hover:text-rose-500 hover:bg-rose-100 rounded-md transition-colors"><X className="w-4 h-4"/></button>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+
+               <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-bold text-slate-400">輸入宣導文字：</span>
+                  <button onClick={handleSaveMarqueeTpl} disabled={!marqueeInputText.trim()} className="text-xs font-bold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200 disabled:opacity-50 flex items-center gap-1 shadow-sm transition-all active:scale-95"><PenTool className="w-3 h-3"/> 儲存為範本</button>
+               </div>
                <textarea 
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 outline-none focus:border-sky-500 resize-none h-32 text-base font-bold" 
                   placeholder="請輸入衛教或宣導文字..."
