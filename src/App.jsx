@@ -288,6 +288,15 @@ function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, pl
       // --- 在地化意圖判斷引擎 (Local Intent Engine) ---
       const dangerRegex = /痛|喘|暈|血|呼吸困難|意識不清|昏倒|休克|沒心跳|無法呼吸|胸悶|胸痛|大出血|吐血|救命/;
       const progressRegex = /進度|等多久|幾號|號碼|報告|出來沒|輪到我了嗎|還要等|看診了嗎|抽血結果|X光結果|驗尿結果/;
+      
+      // FAQ Regex (方案 C：複合型 FAQ 意圖)
+      const faqWheelchairRegex = /輪椅|陪病椅/;
+      const faqBeddingRegex = /床單|棉被/;
+      const faqSuppliesRegex = /飲食|尿布|清潔用品|買東西|買吃的/;
+      
+      // 求助 Regex (方案 A：將具體求助拉高優先級)
+      const helpRegex = /點滴|沒水了|漏針|護理師|護士|小姐|幫忙|協助|同意書|代簽|回報/;
+      
       const navToiletRegex = /廁所|洗手間|化妝室|尿尿|大便|解手|方便一下|小解/;
       const navXrayRegex = /X光|照相|放射/;
       const navCtRegex = /斷層|CT/i;
@@ -297,8 +306,9 @@ function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, pl
       const navBloodRegex = /抽血|檢驗科|驗血/;
       const navPharmacyRegex = /藥局|領藥|拿藥/;
       const navCashierRegex = /批價|繳費|付錢|結帳/;
+      
+      // 籠統地點/導航動詞 Regex (優先級最低，避免截胡)
       const navGeneralRegex = /迷路|怎麼走|在哪裡|往哪走|地圖/;
-      const helpRegex = /點滴|沒水了|漏針|護理師|護士|小姐|幫忙|協助|輪椅|同意書|代簽|回報/;
 
       // 模擬網路思考時間，增加體驗真實感
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -307,6 +317,7 @@ function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, pl
       let actionToTrigger = null;
       let navDestId = null;
 
+      // 方案 A：瀑布流優先級排序 (SOS > 進度 > FAQ具體物品 > 具體求助 > 具體導航 > 籠統導航 > 兜底)
       if (dangerRegex.test(text)) {
           triggerVibe([1000, 500, 1000]);
           replyText = '⚠️ 偵測到您可能有緊急醫療需求，已自動為您呼叫護理師！';
@@ -328,6 +339,18 @@ function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, pl
       } else if (progressRegex.test(text)) {
           replyText = "為您查詢目前的就診與報告進度，請參考畫面上的等候人數與檢驗狀態喔！";
           actionToTrigger = 'progress';
+      } else if (faqWheelchairRegex.test(text)) {
+          replyText = "輪椅與陪病椅，請至急診大門口服務台借用。已經幫您切換到求助頁面，您可以查看常見問題解答喔。";
+          actionToTrigger = 'help';
+      } else if (faqBeddingRegex.test(text)) {
+          replyText = "床單與棉被，請至掛號櫃檯領取。已經幫您切換到求助頁面，您可以查看常見問題解答喔。";
+          actionToTrigger = 'help';
+      } else if (faqSuppliesRegex.test(text)) {
+          replyText = "大廳有超商及醫療用品店可以購買飲食與尿布。已經幫您切換到求助頁面，您可以查看常見問題解答喔。";
+          actionToTrigger = 'help';
+      } else if (helpRegex.test(text)) {
+          replyText = "我已經幫您切換到服務面板，您可以點擊畫面上的按鈕，直接通知護理站喔。";
+          actionToTrigger = 'help';
       } else if (navToiletRegex.test(text)) {
           replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往廁所。";
           actionToTrigger = 'nav'; navDestId = 'toilet';
@@ -358,9 +381,6 @@ function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, pl
       } else if (navGeneralRegex.test(text)) {
           replyText = "馬上為您開啟地圖導航，請跟著地圖指引走喔。";
           actionToTrigger = 'nav';
-      } else if (helpRegex.test(text)) {
-          replyText = "我已經幫您切換到服務面板，您可以點擊畫面上的按鈕，直接通知護理站喔。";
-          actionToTrigger = 'help';
       } else {
           // 兜底防呆回覆 (Fallback)
           replyText = "不好意思，我是急診行政助理，不太了解您的意思。如果您需要醫療協助，請點擊畫面上的按鈕通知護理站。";
@@ -375,7 +395,7 @@ function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, pl
           setTimeout(() => {
               onNavigateToTab(actionToTrigger, navDestId);
               onClose();
-          }, 3500); // 留時間讓病患聽取語音
+          }, 4500); // 留時間讓病患聽取較長的 FAQ 語音
       }
 
       setIsProcessing(false);
