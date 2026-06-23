@@ -1,10 +1,9 @@
-// [V84 護理機情境定位 + AI語音辨識導航助理 (含文字輸入與意圖切換)] 
-// 1. 在護理機任務面板保留「找病人」與全區導航。
+// [V85 護理機情境定位 + 在地化意圖語音導航助理 (Rule-based Intent Engine)] 
+// 1. 捨棄外部 LLM API，改採在地化正則表達式 (Regex) 意圖判斷引擎，確保 100% 醫療免責與資料安全。
 // 2. 於病患/家屬端加入「AI語音助理」懸浮按鈕。
 // 3. 採用「按住說話」純語音介面，並保留「文字輸入」以適應吵雜環境。
-// 4. 關鍵字防火牆：偵測到危險字眼自動阻斷 AI 並觸發 SOS。
-// 5. 限制 AI 職權邊界：拒絕回答病情與用藥建議。
-// 6. AI 意圖捕捉：可根據對話自動跳轉「看進度」、「找路」、「要幫忙」分頁。
+// 4. 關鍵字防火牆：偵測到危險字眼自動阻斷並觸發 SOS。
+// 5. 自動意圖導航：依據關鍵字，精準導向「看進度」、「找路 (含地點帶入)」、「要幫忙」。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -238,43 +237,8 @@ const findPath = (start, end, floorLayout) => {
   return [];
 };
 
-// ================= AI Gemini 呼叫核心與重試機制 =================
-const callGeminiWithRetry = async (text, retries = 5) => {
-  const apiKey = ""; // Runtime 提供
-  const systemPrompt = `你是一個「急診行政導航助理，非專業醫護人員」。
-只要病患問到跟「病情、用藥、處置」相關的問題，你必須一律回答：「我是行政助理，無法提供醫療建議。請您點擊上方的『要幫忙』按鈕通知護理站，或稍後向您的主治醫師詢問。」
-對於其他行政與導航問題，請給予簡短、友善、口語化的指引。
 
-【重要系統連動指令】：
-若使用者詢問以下特定意圖，請務必在你的回覆文字最後，加上對應的 [中括號指令]，系統會自動為使用者切換畫面：
-1. 詢問「進度、排隊、等多久、報告出來沒、流程」：請在回覆結尾加上 [ACTION_PROGRESS]
-2. 詢問具體地點導航（例如廁所、X光室等）：請在回覆結尾加上 [ACTION_NAV:地點ID]。地點ID列表：er_entrance(大門), pharmacy(藥局), cashier(批價), elevator(電梯), xray(X光), ct(電腦斷層), us(超音波), mri(核磁共振), blood(抽血/檢驗科), exam_room(檢查室), ecg(心電圖), nurse(護理站), icu(加護病房), toilet(廁所), water(飲水機), trash(污物室)。如果是泛泛詢問迷路而無具體地點，使用 [ACTION_NAV]
-3. 詢問「同意書、要幫忙、點滴沒了、呼叫護士」：請在回覆結尾加上 [ACTION_HELP]`;
-
-  const payload = {
-      contents: [{ parts: [{ text }] }],
-      systemInstruction: { parts: [{ text: systemPrompt }] }
-  };
-
-  const delays = [1000, 2000, 4000, 8000, 16000];
-  for (let i = 0; i < retries; i++) {
-      try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-          });
-          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-          const data = await res.json();
-          return data.candidates?.[0]?.content?.parts?.[0]?.text || "抱歉，我現在無法回答。";
-      } catch (err) {
-          if (i === retries - 1) throw err;
-          await new Promise(r => setTimeout(r, delays[i]));
-      }
-  }
-};
-
-// ================= 智能語音助理 元件 =================
+// ================= 智能語音助理 (在地化關鍵字引擎) =================
 function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, playVoice, onNavigateToTab }) {
   const [messages, setMessages] = useState([
       { role: 'ai', text: `您好，${currentPatient.name}！我是急診導航助理。請問需要什麼幫忙？（請按住麥克風或直接打字）` }
@@ -321,67 +285,100 @@ function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, pl
       setMessages(prev => [...prev, { role: 'user', text }]);
       setIsProcessing(true);
 
-      // 1. 嚴格的關鍵字攔截與自動觸發 SOS
-      const dangerRegex = /痛|喘|暈|血|呼吸困難|意識不清/;
+      // --- 在地化意圖判斷引擎 (Local Intent Engine) ---
+      const dangerRegex = /痛|喘|暈|血|呼吸困難|意識不清|昏倒|休克|沒心跳|無法呼吸|胸悶|胸痛|大出血|吐血|救命/;
+      const progressRegex = /進度|等多久|幾號|號碼|報告|出來沒|輪到我了嗎|還要等|看診了嗎|抽血結果|X光結果|驗尿結果/;
+      const navToiletRegex = /廁所|洗手間|化妝室|尿尿|大便|解手|方便一下|小解/;
+      const navXrayRegex = /X光|照相|放射/;
+      const navCtRegex = /斷層|CT/i;
+      const navMriRegex = /核磁共振|MRI/i;
+      const navUsRegex = /超音波/;
+      const navEcgRegex = /心電圖/;
+      const navBloodRegex = /抽血|檢驗科|驗血/;
+      const navPharmacyRegex = /藥局|領藥|拿藥/;
+      const navCashierRegex = /批價|繳費|付錢|結帳/;
+      const navGeneralRegex = /迷路|怎麼走|在哪裡|往哪走|地圖/;
+      const helpRegex = /點滴|沒水了|漏針|護理師|護士|小姐|幫忙|協助|輪椅|同意書|代簽|回報/;
+
+      // 模擬網路思考時間，增加體驗真實感
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      let replyText = "";
+      let actionToTrigger = null;
+      let navDestId = null;
+
       if (dangerRegex.test(text)) {
           triggerVibe([1000, 500, 1000]);
-          setMessages(prev => [...prev, {
-              role: 'system',
-              text: '⚠️ 偵測到您可能有緊急醫療需求，已自動為您呼叫護理師！'
-          }]);
+          replyText = '⚠️ 偵測到您可能有緊急醫療需求，已自動為您呼叫護理師！';
+          setMessages(prev => [...prev, { role: 'system', text: replyText }]);
           playVoice('偵測到您可能有緊急醫療需求，已自動為您呼叫護理師！', true);
           createAlert({
               patientId: currentPatient.id,
               type: 'sos',
-              message: `🚨AI偵測危急關鍵字: ${text}`,
+              message: `🚨危急字眼觸發: ${text}`,
               priority: 'high'
           });
           setIsProcessing(false);
           
-          // 自動切換到求助頁面
           setTimeout(() => {
              onNavigateToTab('help');
              onClose();
           }, 3000);
           return;
+      } else if (progressRegex.test(text)) {
+          replyText = "為您查詢目前的就診與報告進度，請參考畫面上的等候人數與檢驗狀態喔！";
+          actionToTrigger = 'progress';
+      } else if (navToiletRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往廁所。";
+          actionToTrigger = 'nav'; navDestId = 'toilet';
+      } else if (navXrayRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往 X 光室。";
+          actionToTrigger = 'nav'; navDestId = 'xray';
+      } else if (navCtRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往電腦斷層室。";
+          actionToTrigger = 'nav'; navDestId = 'ct';
+      } else if (navMriRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往核磁共振室。";
+          actionToTrigger = 'nav'; navDestId = 'mri';
+      } else if (navUsRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往超音波室。";
+          actionToTrigger = 'nav'; navDestId = 'us';
+      } else if (navEcgRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往心電圖室。";
+          actionToTrigger = 'nav'; navDestId = 'ecg';
+      } else if (navBloodRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往檢驗科。";
+          actionToTrigger = 'nav'; navDestId = 'blood';
+      } else if (navPharmacyRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往急診藥局。";
+          actionToTrigger = 'nav'; navDestId = 'pharmacy';
+      } else if (navCashierRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著畫面上的箭頭前往批價掛號櫃檯。";
+          actionToTrigger = 'nav'; navDestId = 'cashier';
+      } else if (navGeneralRegex.test(text)) {
+          replyText = "馬上為您開啟地圖導航，請跟著地圖指引走喔。";
+          actionToTrigger = 'nav';
+      } else if (helpRegex.test(text)) {
+          replyText = "我已經幫您切換到服務面板，您可以點擊畫面上的按鈕，直接通知護理站喔。";
+          actionToTrigger = 'help';
+      } else {
+          // 兜底防呆回覆 (Fallback)
+          replyText = "不好意思，我是急診行政助理，不太了解您的意思。如果您需要醫療協助，請點擊畫面上的按鈕通知護理站。";
+          actionToTrigger = 'help';
       }
 
-      // 2. 呼叫 Gemini AI
-      try {
-          let response = await callGeminiWithRetry(text);
-          let actionToTrigger = null;
-          let navDestId = null;
+      setMessages(prev => [...prev, { role: 'ai', text: replyText }]);
+      playVoice(replyText);
 
-          // 意圖攔截邏輯：解析並移除指令標籤
-          const navMatch = response.match(/\[ACTION_NAV(?::([a-zA-Z_]+))?\]/);
-          if (navMatch) {
-              actionToTrigger = 'nav';
-              navDestId = navMatch[1] || null;
-              response = response.replace(navMatch[0], '').trim();
-          } else if (response.includes('[ACTION_PROGRESS]')) {
-              actionToTrigger = 'progress';
-              response = response.replace('[ACTION_PROGRESS]', '').trim();
-          } else if (response.includes('[ACTION_HELP]')) {
-              actionToTrigger = 'help';
-              response = response.replace('[ACTION_HELP]', '').trim();
-          }
-
-          setMessages(prev => [...prev, { role: 'ai', text: response }]);
-          playVoice(response);
-
-          // 若有觸發動作，延遲關閉視窗並切換 Tab
-          if (actionToTrigger) {
-              setTimeout(() => {
-                  onNavigateToTab(actionToTrigger, navDestId);
-                  onClose();
-              }, 4000); // 給予使用者聽完語音的時間，然後自動跳轉
-          }
-
-      } catch (err) {
-          setMessages(prev => [...prev, { role: 'system', text: '連線異常，請稍後再試或直接按求救鈕。' }]);
-      } finally {
-          setIsProcessing(false);
+      // 若有觸發動作，延遲關閉視窗並切換 Tab
+      if (actionToTrigger) {
+          setTimeout(() => {
+              onNavigateToTab(actionToTrigger, navDestId);
+              onClose();
+          }, 3500); // 留時間讓病患聽取語音
       }
+
+      setIsProcessing(false);
   };
 
   const handlePointerDown = (e) => {
@@ -999,7 +996,7 @@ function MainApp() {
                 </div>
             </div>
 
-            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V84 (含AI語音助理)</p>
+            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V85 (在地化意圖助理版)</p>
             
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-xl leading-relaxed">
               若要測試網址獨立分流，請在網址後方加上以下參數：<br/>
