@@ -1,13 +1,16 @@
-// [V82 護理機主動接收代簽任務版] 
-// 1. 修正「授權代簽」機制：主控台發出代簽請求時，會主動建立高優先級任務給行動護理機。
-// 2. 確保護理機不用等待病患按「要幫忙」，就能主動跳出病人資訊與床邊代簽按鈕。
-// 3. 嚴格保留所有核心連線、主控台邏輯與 V81 的功能。
+// [V84 護理機情境定位 + AI語音辨識導航助理 (含文字輸入與意圖切換)] 
+// 1. 在護理機任務面板保留「找病人」與全區導航。
+// 2. 於病患/家屬端加入「AI語音助理」懸浮按鈕。
+// 3. 採用「按住說話」純語音介面，並保留「文字輸入」以適應吵雜環境。
+// 4. 關鍵字防火牆：偵測到危險字眼自動阻斷 AI 並觸發 SOS。
+// 5. 限制 AI 職權邊界：拒絕回答病情與用藥建議。
+// 6. AI 意圖捕捉：可根據對話自動跳轉「看進度」、「找路」、「要幫忙」分頁。
 
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
-import { Activity, AlertTriangle, ArrowUpCircle, Bell, Bone, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, CreditCard, Droplets, FileText, FlaskConical, HandHelping, KeyRound, Loader2, Lock, LogOut, Magnet, MapPin, Maximize, Mic, Monitor, MonitorSmartphone, Moon, PenTool, PhoneCall, Power, Search, Share2, ShieldAlert, Smartphone, Sun, UserCircle, Users, Waves, X, ZoomIn, ZoomOut, Volume2, VolumeX, Type, Clock, LogOut as LogOutIcon, CheckSquare, RefreshCw, ScanLine, UserCheck, AlertOctagon, Vibrate, VibrateOff, Navigation, ChevronRight, Trash2, Megaphone, Info } from 'lucide-react';
+import { Bot, Activity, AlertTriangle, ArrowUpCircle, Bell, Bone, CheckCircle2, ChevronDown, ChevronLeft, ChevronUp, CreditCard, Droplets, FileText, FlaskConical, HandHelping, KeyRound, Loader2, Lock, LogOut, Magnet, MapPin, Maximize, Mic, Monitor, MonitorSmartphone, Moon, PenTool, PhoneCall, Power, Search, Share2, ShieldAlert, Smartphone, Sun, UserCircle, Users, Waves, X, ZoomIn, ZoomOut, Volume2, VolumeX, Type, Clock, LogOut as LogOutIcon, CheckSquare, RefreshCw, ScanLine, UserCheck, AlertOctagon, Vibrate, VibrateOff, Navigation, ChevronRight, Trash2, Megaphone, Info, Send } from 'lucide-react';
 
 const myFirebaseConfig = {
   apiKey: "AIzaSyCtkjjg0bkfhua0ttmFw3sEQ0NJM4z7g48",
@@ -36,7 +39,7 @@ try {
   initError = error.message;
 }
 
-// 動態生成 70 名測試病患資料
+// 動態生成測試病患資料
 const ZONES = ['重症區', '看診區', '兒科區', '留觀區'];
 const LAST_NAMES = ['李', '林', '王', '陳', '張', '黃', '吳', '劉', '蔡', '楊'];
 const FIRST_NAMES = ['大雄', '小花', '萬吉', '小明', '淑雅', '金智', '建國', '美麗', '家豪', '雅婷'];
@@ -218,6 +221,302 @@ const evaluateProgress = (state) => {
   }
 };
 
+const findPath = (start, end, floorLayout) => {
+  const queue = [[start]]; const visited = new Set([`${start[0]},${start[1]}`]); const dirs = [[0,1],[1,0],[0,-1],[-1,0]];
+  while(queue.length > 0) {
+    const path = queue.shift(); const curr = path[path.length - 1];
+    if (curr[0] === end[0] && curr[1] === end[1]) return path;
+    for(let [dr, dc] of dirs) {
+      const nr = curr[0] + dr; const nc = curr[1] + dc;
+      if (nr >= 0 && nr < floorLayout.length && nc >= 0 && nc < floorLayout[0].length) {
+        if ((floorLayout[nr][nc] === 1 || floorLayout[nr][nc] === 6 || (nr === end[0] && nc === end[1])) && !visited.has(`${nr},${nc}`)) {
+          visited.add(`${nr},${nc}`); queue.push([...path, [nr, nc]]);
+        }
+      }
+    }
+  } 
+  return [];
+};
+
+// ================= AI Gemini 呼叫核心與重試機制 =================
+const callGeminiWithRetry = async (text, retries = 5) => {
+  const apiKey = ""; // Runtime 提供
+  const systemPrompt = `你是一個「急診行政導航助理，非專業醫護人員」。
+只要病患問到跟「病情、用藥、處置」相關的問題，你必須一律回答：「我是行政助理，無法提供醫療建議。請您點擊上方的『要幫忙』按鈕通知護理站，或稍後向您的主治醫師詢問。」
+對於其他行政與導航問題，請給予簡短、友善、口語化的指引。
+
+【重要系統連動指令】：
+若使用者詢問以下特定意圖，請務必在你的回覆文字最後，加上對應的 [中括號指令]，系統會自動為使用者切換畫面：
+1. 詢問「進度、排隊、等多久、報告出來沒、流程」：請在回覆結尾加上 [ACTION_PROGRESS]
+2. 詢問具體地點導航（例如廁所、X光室等）：請在回覆結尾加上 [ACTION_NAV:地點ID]。地點ID列表：er_entrance(大門), pharmacy(藥局), cashier(批價), elevator(電梯), xray(X光), ct(電腦斷層), us(超音波), mri(核磁共振), blood(抽血/檢驗科), exam_room(檢查室), ecg(心電圖), nurse(護理站), icu(加護病房), toilet(廁所), water(飲水機), trash(污物室)。如果是泛泛詢問迷路而無具體地點，使用 [ACTION_NAV]
+3. 詢問「同意書、要幫忙、點滴沒了、呼叫護士」：請在回覆結尾加上 [ACTION_HELP]`;
+
+  const payload = {
+      contents: [{ parts: [{ text }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] }
+  };
+
+  const delays = [1000, 2000, 4000, 8000, 16000];
+  for (let i = 0; i < retries; i++) {
+      try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          const data = await res.json();
+          return data.candidates?.[0]?.content?.parts?.[0]?.text || "抱歉，我現在無法回答。";
+      } catch (err) {
+          if (i === retries - 1) throw err;
+          await new Promise(r => setTimeout(r, delays[i]));
+      }
+  }
+};
+
+// ================= 智能語音助理 元件 =================
+function AIChatAssistant({ onClose, currentPatient, createAlert, triggerVibe, playVoice, onNavigateToTab }) {
+  const [messages, setMessages] = useState([
+      { role: 'ai', text: `您好，${currentPatient.name}！我是急診導航助理。請問需要什麼幫忙？（請按住麥克風或直接打字）` }
+  ]);
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [inputText, setInputText] = useState('');
+  const recognitionRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isProcessing]);
+
+  useEffect(() => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+          const recognition = new SpeechRecognition();
+          recognition.lang = 'zh-TW';
+          recognition.continuous = false;
+          recognition.interimResults = false;
+
+          recognition.onresult = (event) => {
+              setIsListening(false);
+              const transcript = event.results[0][0].transcript;
+              handleProcessVoice(transcript);
+          };
+          recognition.onerror = (e) => {
+              console.error("Speech reco error", e);
+              setIsListening(false);
+              if (e.error !== 'aborted') {
+                  playVoice('收音失敗，請再試一次。');
+              }
+          };
+          recognition.onend = () => {
+              setIsListening(false);
+          };
+          recognitionRef.current = recognition;
+      }
+  }, []);
+
+  const handleProcessVoice = async (text) => {
+      if (!text.trim()) return;
+      setMessages(prev => [...prev, { role: 'user', text }]);
+      setIsProcessing(true);
+
+      // 1. 嚴格的關鍵字攔截與自動觸發 SOS
+      const dangerRegex = /痛|喘|暈|血|呼吸困難|意識不清/;
+      if (dangerRegex.test(text)) {
+          triggerVibe([1000, 500, 1000]);
+          setMessages(prev => [...prev, {
+              role: 'system',
+              text: '⚠️ 偵測到您可能有緊急醫療需求，已自動為您呼叫護理師！'
+          }]);
+          playVoice('偵測到您可能有緊急醫療需求，已自動為您呼叫護理師！', true);
+          createAlert({
+              patientId: currentPatient.id,
+              type: 'sos',
+              message: `🚨AI偵測危急關鍵字: ${text}`,
+              priority: 'high'
+          });
+          setIsProcessing(false);
+          
+          // 自動切換到求助頁面
+          setTimeout(() => {
+             onNavigateToTab('help');
+             onClose();
+          }, 3000);
+          return;
+      }
+
+      // 2. 呼叫 Gemini AI
+      try {
+          let response = await callGeminiWithRetry(text);
+          let actionToTrigger = null;
+          let navDestId = null;
+
+          // 意圖攔截邏輯：解析並移除指令標籤
+          const navMatch = response.match(/\[ACTION_NAV(?::([a-zA-Z_]+))?\]/);
+          if (navMatch) {
+              actionToTrigger = 'nav';
+              navDestId = navMatch[1] || null;
+              response = response.replace(navMatch[0], '').trim();
+          } else if (response.includes('[ACTION_PROGRESS]')) {
+              actionToTrigger = 'progress';
+              response = response.replace('[ACTION_PROGRESS]', '').trim();
+          } else if (response.includes('[ACTION_HELP]')) {
+              actionToTrigger = 'help';
+              response = response.replace('[ACTION_HELP]', '').trim();
+          }
+
+          setMessages(prev => [...prev, { role: 'ai', text: response }]);
+          playVoice(response);
+
+          // 若有觸發動作，延遲關閉視窗並切換 Tab
+          if (actionToTrigger) {
+              setTimeout(() => {
+                  onNavigateToTab(actionToTrigger, navDestId);
+                  onClose();
+              }, 4000); // 給予使用者聽完語音的時間，然後自動跳轉
+          }
+
+      } catch (err) {
+          setMessages(prev => [...prev, { role: 'system', text: '連線異常，請稍後再試或直接按求救鈕。' }]);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handlePointerDown = (e) => {
+      e.preventDefault();
+      if (isProcessing) return;
+      
+      // 停止當前正在播放的語音
+      if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+      }
+
+      if (recognitionRef.current) {
+          try {
+              recognitionRef.current.start();
+              setIsListening(true);
+              triggerVibe([50]);
+          } catch (e) {
+              // Ignore if already started
+          }
+      } else {
+          alert('您的設備不支援語音辨識功能');
+      }
+  };
+
+  const handlePointerUp = (e) => {
+      e.preventDefault();
+      if (isListening && recognitionRef.current) {
+          recognitionRef.current.stop();
+      }
+  };
+
+  const handleTextSubmit = () => {
+      if (!inputText.trim() || isProcessing) return;
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel(); // 停止語音
+      handleProcessVoice(inputText.trim());
+      setInputText('');
+  };
+
+  return (
+      <div className="fixed inset-0 z-[8000] bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-end sm:justify-center p-0 sm:p-6 animate-[fadeIn_0.3s_ease-out]">
+          <div className="bg-slate-50 dark:bg-slate-900 w-full sm:max-w-md h-[90vh] sm:h-[85vh] rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700 relative">
+              {/* Header */}
+              <div className="bg-white dark:bg-slate-800 p-5 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0 shadow-sm z-10">
+                  <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-sky-100 dark:bg-sky-900/50 rounded-full flex items-center justify-center text-sky-500">
+                          <Bot className="w-6 h-6" />
+                      </div>
+                      <div>
+                          <h3 className="font-black text-xl text-slate-800 dark:text-white">AI 語音助理</h3>
+                          <p className="text-xs text-slate-500 font-bold">非專業醫護人員</p>
+                      </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <button onClick={() => { if('speechSynthesis' in window) window.speechSynthesis.cancel(); }} className="px-3 py-1.5 bg-rose-50 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-full hover:bg-rose-100 flex items-center gap-1 font-bold text-sm transition-colors border border-rose-200 dark:border-rose-500/50">
+                          <VolumeX className="w-4 h-4" /> 停止播報
+                      </button>
+                      <button onClick={() => { if('speechSynthesis' in window) window.speechSynthesis.cancel(); onClose(); }} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full hover:bg-slate-200 text-slate-500">
+                          <X className="w-6 h-6" />
+                      </button>
+                  </div>
+              </div>
+
+              {/* Message List */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50 dark:bg-slate-900/50">
+                  {messages.map((msg, idx) => (
+                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-[fadeIn_0.3s_ease-out]`}>
+                          <div className={`max-w-[85%] p-4 text-lg font-bold leading-relaxed shadow-sm ${
+                              msg.role === 'user' ? 'bg-sky-500 text-white rounded-3xl rounded-tr-sm' :
+                              msg.role === 'system' ? 'bg-rose-100 text-rose-700 border border-rose-300 rounded-3xl rounded-tl-sm' :
+                              'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-3xl rounded-tl-sm'
+                          }`}>
+                              {msg.role === 'ai' && <Bot className="w-6 h-6 inline-block mr-2 text-sky-500 mb-1" />}
+                              {msg.role === 'system' && <AlertTriangle className="w-6 h-6 inline-block mr-2 text-rose-600 mb-1" />}
+                              {msg.text}
+                          </div>
+                      </div>
+                  ))}
+                  {isProcessing && (
+                      <div className="flex justify-start">
+                          <div className="max-w-[85%] p-4 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-tl-sm flex items-center gap-3 text-slate-400 font-bold">
+                              <Loader2 className="w-6 h-6 animate-spin" /> AI 分析中...
+                          </div>
+                      </div>
+                  )}
+                  <div ref={messagesEndRef} className="h-4" />
+              </div>
+
+              {/* Text Input & Giant Voice Button Area */}
+              <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex flex-col gap-4 pb-8 shrink-0">
+                  {/* Text Input Row */}
+                  <div className="flex items-center gap-2">
+                      <input 
+                          type="text" 
+                          value={inputText}
+                          onChange={(e) => setInputText(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
+                          placeholder="吵雜環境可在此輸入文字..." 
+                          className="flex-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-2xl px-5 py-3 outline-none focus:border-sky-500 font-bold"
+                          disabled={isProcessing}
+                      />
+                      <button 
+                          onClick={handleTextSubmit} 
+                          disabled={!inputText.trim() || isProcessing} 
+                          className="bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white p-3 rounded-2xl transition-colors shrink-0"
+                      >
+                          <Send className="w-6 h-6" />
+                      </button>
+                  </div>
+
+                  {/* Voice Button Row */}
+                  <div className="flex flex-col items-center justify-center pt-2">
+                      <p className="text-slate-400 font-bold text-sm mb-3">
+                          {isListening ? '請說話...' : '或按住下方按鈕語音輸入'}
+                      </p>
+                      <button
+                          onPointerDown={handlePointerDown}
+                          onPointerUp={handlePointerUp}
+                          onPointerLeave={handlePointerUp}
+                          className={`w-24 h-24 rounded-full flex flex-col items-center justify-center transition-all select-none touch-none ${
+                              isListening 
+                              ? 'bg-rose-500 text-white scale-110 shadow-[0_10px_40px_rgba(244,63,94,0.6)] animate-pulse' 
+                              : 'bg-sky-500 text-white hover:bg-sky-600 shadow-[0_10px_30px_rgba(14,165,233,0.4)]'
+                          }`}
+                      >
+                          <Mic className={`w-10 h-10 mb-1 ${isListening ? 'animate-bounce' : ''}`} />
+                          <span className="font-black text-sm">{isListening ? '聆聽中' : '按住說話'}</span>
+                      </button>
+                  </div>
+              </div>
+          </div>
+      </div>
+  );
+}
+
+// ================= 共用元件 =================
 const SwipeToConfirm = ({ onConfirm, text, bgClass = "bg-slate-100 dark:bg-slate-700", textClass = "text-slate-500 dark:text-slate-400", activeBgClass = "bg-emerald-500", activeTextClass = "text-white", icon = <ChevronRight className="w-5 h-5 text-slate-400"/> }) => {
   const [dragX, setDragX] = useState(0);
   const [unlocked, setUnlocked] = useState(false);
@@ -658,11 +957,11 @@ function MainApp() {
         }
         
         .hide-scrollbar::-webkit-scrollbar {
-            display: none;
+             display: none;
         }
         .hide-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
+             -ms-overflow-style: none;
+             scrollbar-width: none;
         }
       `}</style>
 
@@ -673,7 +972,6 @@ function MainApp() {
                <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
             </div>
             
-            {/* 首頁 Logo 區塊 - 精美重製版 */}
             <div className="mb-6 w-full max-w-[320px] sm:max-w-[450px] flex flex-col items-center justify-center">
                 <img 
                     src="logo.png" 
@@ -701,7 +999,7 @@ function MainApp() {
                 </div>
             </div>
 
-            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V82</p>
+            <p className="text-teal-600 dark:text-teal-400 font-bold mb-8 text-center text-sm bg-teal-50 dark:bg-teal-500/10 px-5 py-2 rounded-full border border-teal-200 dark:border-teal-500/30 shadow-sm">版本訊息 V84 (含AI語音助理)</p>
             
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 text-center max-w-xl leading-relaxed">
               若要測試網址獨立分流，請在網址後方加上以下參數：<br/>
@@ -845,6 +1143,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
   const [hasNotifiedBilling, setHasNotifiedBilling] = useState(false);
   const processedCmdsRef = useRef(new Set()); 
   const [isNavMenuOpen, setIsNavMenuOpen] = useState(true);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
 
   const { currentStep, currentStatus, waitingCount, labStatus, reminders, rfid, sosEnabled, consents, billingPaidAt } = patientState;
   
@@ -962,23 +1261,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     }
     return () => clearTimeout(timer);
   }, [showTriageBumpAlert]);
-
-  const findPath = (start, end, floorLayout) => {
-    const queue = [[start]]; const visited = new Set([`${start[0]},${start[1]}`]); const dirs = [[0,1],[1,0],[0,-1],[-1,0]];
-    while(queue.length > 0) {
-      const path = queue.shift(); const curr = path[path.length - 1];
-      if (curr[0] === end[0] && curr[1] === end[1]) return path;
-      for(let [dr, dc] of dirs) {
-        const nr = curr[0] + dr; const nc = curr[1] + dc;
-        if (nr >= 0 && nr < floorLayout.length && nc >= 0 && nc < floorLayout[0].length) {
-          if ((floorLayout[nr][nc] === 1 || floorLayout[nr][nc] === 6 || (nr === end[0] && nc === end[1])) && !visited.has(`${nr},${nc}`)) {
-            visited.add(`${nr},${nc}`); queue.push([...path, [nr, nc]]);
-          }
-        }
-      }
-    } 
-    return [];
-  };
 
   const handleNavigation = (destId) => {
     setActiveDestination(destId); setCurrentFloor('1F'); setNavigationState('navigating_1f');
@@ -1331,7 +1613,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           <div className="flex items-center justify-between">
             <div className="text-sky-600 dark:text-sky-400 text-base font-bold flex items-center gap-2"><Activity className="w-5 h-5"/> 某某醫學中心</div>
             <div className="flex items-center gap-2">
-              <HeaderSettings settings={settings} toggleSetting={toggleSetting} />
+              <HeaderSettings settings={settings} toggleSetting={toggleSetting} onLogout={onLogout} />
             </div>
           </div>
           <div className="flex justify-between items-center mt-1">
@@ -1354,7 +1636,7 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           </div>
         )}
 
-        {/* ================= V75 核心修正：導航選單絕對置頂 ================= */}
+        {/* 導航選單絕對置頂 */}
         {activeTab === 'nav' && (
           <div className="absolute top-0 left-0 right-0 z-[70] transition-all duration-300 ease-in-out" style={{ marginTop: '136px' }}> {/* 136px 預留給 Header 的高度 */}
             <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700 shadow-lg relative flex flex-col max-h-[50vh]">
@@ -1644,6 +1926,33 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
           )}
         </div>
 
+        {/* AI 語音助理呼叫按鈕 (限病患與家屬) */}
+        {!isProxyMode && (
+          <button
+              onClick={() => setIsAiAssistantOpen(true)}
+              className="fixed bottom-[100px] right-6 w-16 h-16 bg-gradient-to-br from-sky-400 to-blue-600 rounded-full shadow-[0_8px_30px_rgba(14,165,233,0.5)] flex items-center justify-center text-white z-50 hover:scale-105 active:scale-95 transition-transform border-2 border-white/50"
+          >
+              <Mic className="w-8 h-8 drop-shadow-md" />
+              <span className="absolute -top-2 -left-2 bg-rose-500 text-white text-[10px] font-black px-2 py-1 rounded-full animate-bounce shadow-sm border border-white">AI助理</span>
+          </button>
+        )}
+
+        {isAiAssistantOpen && (
+            <AIChatAssistant
+               onClose={() => setIsAiAssistantOpen(false)}
+               currentPatient={currentPatient}
+               createAlert={createAlert}
+               triggerVibe={triggerVibe}
+               playVoice={playVoice}
+               onNavigateToTab={(tabId, destId) => {
+                   setActiveTab(tabId);
+                   if (tabId === 'nav' && destId) {
+                       setTimeout(() => handleNavigation(destId), 500);
+                   }
+               }}
+            />
+        )}
+
         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-t border-white/50 dark:border-slate-700/50 flex justify-around items-center py-3 pb-8 px-3 z-[80] shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] relative">
           <button onClick={() => {setActiveTab('progress'); playVoice('查看就診與報告進度');}} className={`flex flex-col items-center py-3 rounded-2xl transition-colors ${(isFamilyMode || isProxyMode) ? 'w-[45%]' : 'w-[30%]'} ${activeTab === 'progress' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}><Activity className="w-7 h-7 mb-1" /><span className="font-bold text-sm">看進度</span></button>
           <button onClick={() => {setActiveTab('nav'); playVoice('開啟醫院地圖導航');}} className={`flex flex-col items-center py-3 rounded-2xl transition-colors ${(isFamilyMode || isProxyMode) ? 'w-[45%]' : 'w-[30%]'} ${activeTab === 'nav' ? 'bg-sky-100/80 text-sky-600 border border-sky-200/50' : 'text-slate-500 hover:bg-slate-100/50'}`}><MapPin className="w-7 h-7 mb-1" /><span className="font-bold text-sm">找路</span></button>
@@ -1667,43 +1976,6 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
               </div>
            </div>
         )}
-
-        {/* V80: 病患端授權代簽 Modal */}
-        {showProxyModal && (
-          <div className="absolute inset-0 z-[100] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl relative">
-               <button onClick={() => setShowProxyModal(false)} className="absolute top-4 right-4"><X className="w-7 h-7"/></button>
-               <h3 className="text-2xl font-black mb-2 text-purple-600 dark:text-purple-400 flex items-center justify-center gap-2"><PenTool className="w-6 h-6"/> 家屬代簽授權</h3>
-               <p className="text-slate-500 text-sm mb-6">護理站已開放代簽權限。請代理人掃描下方條碼，或點擊複製連結傳送給不在現場的家屬。</p>
-               <div className="bg-white p-2 rounded-2xl mb-6 aspect-square w-48 border-2 border-purple-200 mx-auto flex items-center justify-center min-h-[180px]">
-                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href.split('?')[0].split('#')[0] : 'https://er-omo.demo')}?token=${currentPatient.token}%26proxy=true`} alt="Proxy QR Code" className="w-full h-full object-contain" />
-               </div>
-               <button onClick={handleProxyCopyToClipboard} className="w-full bg-purple-500 text-white font-bold py-4 rounded-xl active:scale-95 flex items-center justify-center gap-2 shadow-md text-lg">
-                   <Share2 className="w-5 h-5"/> 複製並分享代簽連結
-               </button>
-            </div>
-          </div>
-        )}
-
-        {showShareModal && (
-          <div className="absolute inset-0 z-[100] bg-slate-900/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
-            <div className="bg-white dark:bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm text-center shadow-2xl relative">
-               <button onClick={() => setShowShareModal(false)} className="absolute top-4 right-4"><X className="w-7 h-7"/></button>
-               <h3 className="text-3xl font-black mb-2 text-slate-900 dark:text-white">家屬探病連結</h3>
-               <p className="text-slate-500 text-base mb-6">請掃描條碼或複製連結</p>
-               <div className="bg-white p-2 rounded-2xl mb-6 aspect-square w-48 border-2 mx-auto flex items-center justify-center min-h-[180px]">
-                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}`} alt="QR Code" className="w-full h-full object-contain" />
-               </div>
-               <div className="bg-sky-50 dark:bg-sky-900/30 p-3 rounded-xl mb-6">
-                   <div className="text-sm text-sky-600 dark:text-sky-400 font-bold mb-1">高安全加密分享網址</div>
-                   <div className="text-sm font-mono truncate text-slate-600 dark:text-slate-400">{shareUrl}</div>
-               </div>
-               <button onClick={handleCopyToClipboard} className="w-full bg-indigo-500 text-white font-bold py-5 rounded-xl active:scale-95 flex items-center justify-center gap-2 shadow-md text-xl">
-                   <Share2 className="w-6 h-6"/> 複製分享連結
-               </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1724,6 +1996,25 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
   const [customBroadcastText, setCustomBroadcastText] = useState('');
   const [showMarqueeConfig, setShowMarqueeConfig] = useState(false);
   const [marqueeInputText, setMarqueeInputText] = useState(systemConfig?.marqueeText || '');
+
+  // 護理機專屬導航地圖的狀態
+  const [nurseNavModal, setNurseNavModal] = useState(null);
+  const [nurseNavPath, setNurseNavPath] = useState([]);
+  const nurseMapRef = useRef(null);
+  const nurseTransformRef = useRef({ x: 0, y: 0, scale: 0.75 });
+  const nurseStartDragPos = useRef({ x: 0, y: 0, initialScale: 1, initialPinchDist: 0, isDragging: false });
+  const nurseReqFrameRef = useRef(null);
+
+  const applyNurseTransform = (t) => {
+    nurseTransformRef.current = t;
+    if (nurseMapRef.current) {
+      nurseMapRef.current.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale})`;
+    }
+  };
+
+  useEffect(() => {
+    if (nurseNavModal) applyNurseTransform(nurseTransformRef.current);
+  }, [nurseNavModal]);
 
   const itemsPerPage = 4;
 
@@ -1755,6 +2046,93 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
         if (settings.vibe && navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
         setTimeout(() => setErrorScan(null), 4000);
     }
+  };
+
+  // 新增「找病人」推算邏輯與導航觸發
+  const handleFindPatient = (pat, st) => {
+      let dNode = [5, 7]; // Default
+      let dLabel = '病患位置';
+
+      if (st.location === '洗手間') {
+          dNode = [MAP_LANDMARKS['toilet'].row, MAP_LANDMARKS['toilet'].col];
+          dLabel = '洗手間 (暫離)';
+      } else {
+          if (pat.zone === '重症區') { dNode = [5, 2]; dLabel = `${pat.bed} (重症區)`; }
+          else if (pat.zone === '看診區') { dNode = [7, 1]; dLabel = `${pat.bed} (看診區)`; }
+          else if (pat.zone === '兒科區') { dNode = [8, 5]; dLabel = `${pat.bed} (兒科區)`; }
+          else if (pat.zone === '留觀區') { dNode = [3, 2]; dLabel = `${pat.bed} (留觀區)`; }
+      }
+      const path = findPath([2, 10], dNode, MAP_LAYOUT_1F);
+      setNurseNavPath(path);
+      setNurseNavModal({ patient: pat, destNode: dNode, destLabel: dLabel });
+      showToast(`已開啟尋找病患導航：${dLabel}`);
+  };
+
+  const getNurseCellRendering = (row, col, cellType) => {
+    let labelText = null; let baseStyle = ''; let content = null;
+    const isStart = row === 2 && col === 10;
+    const isDest = nurseNavModal?.destNode[0] === row && nurseNavModal?.destNode[1] === col;
+
+    if (isStart) { labelText = '護理站'; content = '👩‍⚕️'; }
+    if (isDest) { labelText = nurseNavModal.destLabel; content = '📍'; }
+
+    switch(cellType) {
+      case 0: baseStyle = 'opacity-0'; break;
+      case 1: baseStyle = isStart ? 'bg-emerald-400 z-20 shadow-[0_0_15px_#34d399]' : 'bg-stone-200 dark:bg-slate-800 border border-stone-300 dark:border-slate-700'; break;
+      case 2: baseStyle = 'bg-stone-400 dark:bg-slate-700 shadow-[-1px_1px_0_#d6d3d1,-2px_2px_0_#d6d3d1,-3px_3px_0_#d6d3d1,-4px_4px_0_#a8a29e] border-t border-r border-stone-300 z-10 -translate-y-1 translate-x-1'; break;
+      case 3: baseStyle = 'bg-amber-300 shadow-[-1px_1px_0_#fcd34d,-2px_2px_0_#fbbf24,-3px_3px_0_#f59e0b,-4px_4px_0_#d97706] z-10 -translate-y-1 translate-x-1'; break;
+      case 4: baseStyle = 'bg-sky-300 shadow-[-1px_1px_0_#7dd3fc,-2px_2px_0_#38bdf8,-3px_3px_0_#0284c7,-4px_4px_0_#0369a1] z-10 -translate-y-1 translate-x-1'; break;
+      case 5: baseStyle = 'bg-cyan-300 shadow-[-1px_1px_0_#67e8f9,-2px_2px_0_#22d3ee,-3px_3px_0_#0891b2,-4px_4px_0_#0e7490] z-10 -translate-y-1 translate-x-1'; break;
+      case 6: baseStyle = 'bg-stone-300 shadow-[-1px_1px_0_#d6d3d1,-2px_2px_0_#a8a29e,-3px_3px_0_#78716c,-4px_4px_0_#57534e,-5px_5px_0_#44403c] z-20 -translate-y-2 translate-x-2'; break;
+      case 7: baseStyle = 'bg-pink-300 shadow-[-1px_1px_0_#f9a8d4,-2px_2px_0_#f472b6,-3px_3px_0_#db2777,-4px_4px_0_#be185d] z-10 -translate-y-1 translate-x-1'; break;
+      case 8: baseStyle = 'bg-rose-400 shadow-[-1px_1px_0_#fb7185,-2px_2px_0_#e11d48,-3px_3px_0_#be123c,-4px_4px_0_#9f1239] z-10 -translate-y-1 translate-x-1'; break;
+      default: baseStyle = '';
+    }
+
+    const isHighlight = isStart || isDest;
+    if (isHighlight && cellType !== 1) baseStyle += ' animate-pulse shadow-[0_0_25px_rgba(255,255,255,0.8)]';
+
+    return (
+      <div key={`${row}-${col}`} className={`w-8 h-8 sm:w-9 sm:h-9 relative transition-all duration-300 ${baseStyle}`} style={{ transformStyle: 'preserve-3d' }}>
+        {content && <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'translateZ(40px)' }}><div className="text-4xl animate-bounce" style={{ transform: 'rotateZ(45deg) rotateX(-55deg)' }}>{content}</div></div>}
+        {labelText && (
+          <div className="absolute inset-0 flex items-end justify-center pointer-events-none" style={{ transform: `translateZ(${isHighlight ? '150px' : '55px'})`, zIndex: isHighlight ? 999 : 50 }}>
+            <div className={`flex flex-col items-center origin-bottom transition-all duration-500 animate-bounce`} style={{ transform: 'rotateZ(45deg) rotateX(-55deg)' }}>
+              <div className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-xl transition-all ${isDest ? 'bg-rose-500 border border-rose-300 scale-125 shadow-[0_10px_30px_rgba(244,63,94,0.8)]' : 'bg-emerald-500 border border-emerald-300 shadow-[0_10px_30px_rgba(16,185,129,0.8)]'}`}>
+                 <span className="font-bold whitespace-nowrap text-white" style={{ fontSize: '1.25rem' }}>{labelText}</span>
+              </div>
+              <div className={`w-1 h-6 ${isDest ? 'bg-rose-400' : 'bg-emerald-400'}`}></div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderNurseFootprints = () => {
+    let elements = [];
+    if (nurseNavPath.length < 2) return null;
+
+    const pathData = nurseNavPath.map((p, i) => `${i===0?'M':'L'} ${p[1]*36+18},${p[0]*36+18}`).join(' ');
+    elements.push(<path key="base-path" d={pathData} fill="none" stroke="#bae6fd" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 8" opacity="0.6"/>);
+
+    for (let i = 0; i < nurseNavPath.length - 1; i++) {
+       const p1 = nurseNavPath[i];
+       const p2 = nurseNavPath[i+1];
+       const y1 = p1[0] * 36 + 18, x1 = p1[1] * 36 + 18;
+       const y2 = p2[0] * 36 + 18, x2 = p2[1] * 36 + 18;
+       
+       const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI) + 90;
+       const midX = (x1 + x2) / 2;
+       const midY = (y1 + y2) / 2;
+
+       elements.push(
+          <g key={`step-${i}`} transform={`translate(${midX}, ${midY}) rotate(${angle})`}>
+             <polygon className="arrow-step" style={{ animationDelay: `${i * 0.2}s` }} points="-8,6 0,-10 8,6 0,2" fill="#0ea5e9" stroke="#0284c7" strokeWidth="1"/>
+          </g>
+       );
+    }
+    return elements;
   };
 
   const cycleLabStatus = (pId, labType) => {
@@ -1808,7 +2186,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
     if (role === 'station') {
         createCommand({ patientId: pId, action: 'request_proxy_auth' });
         
-        // V82: 主動派發任務給行動護理機，讓護理端能主動跳出病人資訊
         const existingAlert = alerts.find(a => a.patientId === pId && a.type === 'proxy_auth');
         if (!existingAlert) {
             createAlert({ 
@@ -1992,6 +2369,93 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
         </div>
       )}
 
+      {/* 行動護理專屬的導航地圖 Modal */}
+      {nurseNavModal && (
+        <div className="fixed inset-0 z-[7000] bg-slate-900/95 backdrop-blur-xl flex flex-col animate-[fadeIn_0.2s_ease-out]">
+          <div className="p-5 border-b border-slate-700 flex justify-between items-center text-white shrink-0 bg-slate-800/50 shadow-md">
+            <div>
+              <h3 className="font-black text-2xl flex items-center gap-2 mb-1"><MapPin className="text-emerald-400 w-6 h-6"/> 導航至 {nurseNavModal.destLabel}</h3>
+              <p className="text-slate-400 text-sm">起點：護理站</p>
+            </div>
+            <button onClick={() => setNurseNavModal(null)} className="p-3 bg-slate-700/80 hover:bg-rose-500 hover:text-white rounded-full transition-colors"><X className="w-6 h-6"/></button>
+          </div>
+          
+          <div className="flex-1 relative overflow-hidden bg-stone-200/20 dark:bg-slate-800/50 touch-none"
+               onTouchStart={(e) => {
+                 if (e.touches.length === 2) {
+                   nurseStartDragPos.current.isDragging = false;
+                   const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                   nurseStartDragPos.current.initialPinchDist = dist;
+                   nurseStartDragPos.current.initialScale = nurseTransformRef.current.scale;
+                 } else if (e.touches.length === 1) {
+                   nurseStartDragPos.current.isDragging = true;
+                   nurseStartDragPos.current.x = e.touches[0].clientX - nurseTransformRef.current.x;
+                   nurseStartDragPos.current.y = e.touches[0].clientY - nurseTransformRef.current.y;
+                 }
+               }} 
+               onTouchMove={(e) => {
+                 if (e.cancelable) e.preventDefault();
+                 const p = nurseTransformRef.current;
+                 if (e.touches.length === 2 && nurseStartDragPos.current.initialPinchDist > 0) {
+                   const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                   const newScale = Math.min(Math.max(0.3, nurseStartDragPos.current.initialScale * (dist / nurseStartDragPos.current.initialPinchDist)), 2.5);
+                   if (nurseReqFrameRef.current) cancelAnimationFrame(nurseReqFrameRef.current);
+                   nurseReqFrameRef.current = requestAnimationFrame(() => applyNurseTransform({ x: p.x, y: p.y, scale: newScale }));
+                 } else if (nurseStartDragPos.current.isDragging && e.touches.length === 1) {
+                   if (nurseReqFrameRef.current) cancelAnimationFrame(nurseReqFrameRef.current);
+                   nurseReqFrameRef.current = requestAnimationFrame(() => applyNurseTransform({
+                     x: e.touches[0].clientX - nurseStartDragPos.current.x,
+                     y: e.touches[0].clientY - nurseStartDragPos.current.y,
+                     scale: p.scale
+                   }));
+                 }
+               }} 
+               onTouchEnd={(e) => {
+                 if (e.touches.length < 2) nurseStartDragPos.current.initialPinchDist = 0;
+                 if (e.touches.length === 0) nurseStartDragPos.current.isDragging = false;
+               }}
+               onMouseDown={(e) => {
+                 nurseStartDragPos.current.isDragging = true;
+                 nurseStartDragPos.current.x = e.clientX - nurseTransformRef.current.x;
+                 nurseStartDragPos.current.y = e.clientY - nurseTransformRef.current.y;
+               }} 
+               onMouseMove={(e) => {
+                 if (nurseStartDragPos.current.isDragging) {
+                   if (nurseReqFrameRef.current) cancelAnimationFrame(nurseReqFrameRef.current);
+                   nurseReqFrameRef.current = requestAnimationFrame(() => applyNurseTransform({
+                     x: e.clientX - nurseStartDragPos.current.x,
+                     y: e.clientY - nurseStartDragPos.current.y,
+                     scale: nurseTransformRef.current.scale
+                   }));
+                 }
+               }} 
+               onMouseUp={() => nurseStartDragPos.current.isDragging = false} 
+               onMouseLeave={() => nurseStartDragPos.current.isDragging = false}
+          >
+            <div className="absolute bottom-6 right-6 z-50 flex flex-col gap-3">
+              <button onClick={() => { const p = nurseTransformRef.current; applyNurseTransform({ ...p, scale: Math.min(2.5, p.scale + 0.15) }); }} className="bg-slate-800/80 backdrop-blur-md p-4 rounded-xl shadow-lg border border-slate-600 text-white"><ZoomIn className="w-7 h-7"/></button>
+              <button onClick={() => { const p = nurseTransformRef.current; applyNurseTransform({ ...p, scale: Math.max(0.3, p.scale - 0.15) }); }} className="bg-slate-800/80 backdrop-blur-md p-4 rounded-xl shadow-lg border border-slate-600 text-white"><ZoomOut className="w-7 h-7"/></button>
+              <button onClick={() => applyNurseTransform({ x: 0, y: 0, scale: 0.75 })} className="bg-slate-800/80 backdrop-blur-md p-4 rounded-xl shadow-lg border border-slate-600 text-white"><Maximize className="w-7 h-7"/></button>
+            </div>
+            
+            <div ref={nurseMapRef} className="w-full h-full flex items-center justify-center will-change-transform" style={{ transformStyle: 'preserve-3d' }}>
+              <div className="relative flex flex-col" style={{ transform: 'rotateX(55deg) rotateZ(-45deg)', transformStyle: 'preserve-3d' }}>
+                {MAP_LAYOUT_1F.map((rowArr, rIdx) => (
+                  <div key={`r-${rIdx}`} className="flex" style={{ transformStyle: 'preserve-3d' }}>
+                    {rowArr.map((cType, cIdx) => getNurseCellRendering(rIdx, cIdx, cType))}
+                  </div>
+                ))}
+                {nurseNavPath.length > 0 && (
+                   <svg className="absolute inset-0 pointer-events-none z-40" style={{ width: '100%', height: '100%', overflow: 'visible', transform: 'translateZ(1px)' }}>
+                      {renderNurseFootprints()}
+                   </svg>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="bg-indigo-50 dark:bg-slate-800 border-b p-5 flex flex-col shrink-0 gap-3">
         <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -2048,7 +2512,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                       )}
                    </div>
                 </div>
-                {/* 新增病患搜尋功能 */}
+                {/* 病患搜尋功能 */}
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
                    <Search className="w-5 h-5 text-slate-400 shrink-0" />
                    <input 
@@ -2141,7 +2605,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                                  <button onClick={()=>createCommand({patientId: p.id, action: 'xray'})} className="text-sm font-bold py-4 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 text-cyan-700 rounded-[1rem]"><MonitorSmartphone className="w-5 h-5 inline mr-2"/>去X光</button>
                               </div>
                               <div className="mt-3">
-                                 <SwipeToConfirm text="滑滑以離院" onConfirm={() => handleDischarge(p.id)} bgClass="bg-rose-50 border border-rose-200" activeBgClass="bg-rose-500" textClass="text-rose-600" />
+                                 <SwipeToConfirm text="滑動以離院" onConfirm={() => handleDischarge(p.id)} bgClass="bg-rose-50 border border-rose-200" activeBgClass="bg-rose-500" textClass="text-rose-600" />
                               </div>
                               <button onClick={()=>handleMarkPaid(p.id)} disabled={st.billingPaidAt} className={`mt-2 w-full py-3 text-sm font-bold rounded-[1rem] border transition-all flex items-center justify-center gap-2 ${st.billingPaidAt ? 'bg-emerald-50 text-emerald-600 border-emerald-200 cursor-not-allowed' : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}>
                                  <CreditCard className="w-5 h-5"/> {st.billingPaidAt ? '已觸發繳費，30分鐘自動結案倒數中' : '💳 批價模擬測試 (模擬 RFID 觸發自動離院倒數)'}
@@ -2167,6 +2631,7 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
              const pat = PATIENTS_LIST.find(p => p.id === a.patientId) || { name: '未知', bed: '?' };
              const isMe = a.assignedTo === nurseName;
              const isDetailsUnlocked = unlockedDetails[a.patientId] || a.patientId === 'GLOBAL';
+             const pState = getMergedState(patientsState[a.patientId], a.patientId);
 
              return (
                <div key={a.id} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl mb-5 shadow-md border-l-8 ${a.priority==='high'?'border-rose-500':'border-sky-500'} animate-[fadeIn_0.2s_ease-out]`}>
@@ -2198,16 +2663,20 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
                         ) : isMe ? (
                            <>
                               {a.patientId !== 'GLOBAL' && (
-                                 <div className="grid grid-cols-3 gap-2">
-                                    <button onClick={()=>setScanDemoTarget(scanDemoTarget === a.id ? null : a.id)} className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-indigo-300 dark:border-indigo-600 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 active:bg-indigo-100">
+                                 <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={()=>setScanDemoTarget(scanDemoTarget === a.id ? null : a.id)} className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-indigo-300 dark:border-indigo-600 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 active:bg-indigo-100">
                                        <ScanLine className="w-8 h-8 mb-1" />
                                        <span className="text-sm font-bold">掃描核對</span>
                                     </button>
-                                    <button onClick={()=>handleProxyAuth(a.patientId)} className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-purple-300 dark:border-purple-600 rounded-2xl bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 active:bg-purple-100">
+                                    <button onClick={()=>handleFindPatient(pat, pState)} className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-emerald-300 dark:border-emerald-600 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 active:bg-emerald-100">
+                                       <MapPin className="w-8 h-8 mb-1" />
+                                       <span className="text-sm font-bold">找病人</span>
+                                    </button>
+                                    <button onClick={()=>handleProxyAuth(a.patientId)} className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-purple-300 dark:border-purple-600 rounded-2xl bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 active:bg-purple-100">
                                        <PenTool className="w-8 h-8 mb-1" />
                                        <span className="text-sm font-bold">床邊代簽</span>
                                     </button>
-                                    <button onClick={()=>setShowHandoff(a.id)} className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-amber-300 dark:border-amber-600 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 active:bg-amber-100">
+                                    <button onClick={()=>setShowHandoff(a.id)} className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-amber-300 dark:border-amber-600 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 active:bg-amber-100">
                                        <RefreshCw className="w-8 h-8 mb-1" />
                                        <span className="text-sm font-bold">一鍵交班</span>
                                     </button>
@@ -2240,7 +2709,6 @@ function NurseApp({ role, nurseName, alerts, updateAlert, resolveAlert, createAl
         </aside>
       </div>
 
-      {/* 交班畫面 */}
       {showHandoff && (
           <div className="fixed inset-0 z-[5000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative border border-slate-200 dark:border-slate-700">
