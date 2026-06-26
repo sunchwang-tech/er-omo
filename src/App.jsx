@@ -1354,8 +1354,23 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
     if (type === 'toilet') {
       if (helpRequests.toilet) { const existingAlert = alerts.find(a => a.patientId === currentPatient.id && a.type === 'toilet'); if (existingAlert) resolveAlert(existingAlert.id); updatePatientState(currentPatient.id, { rfid: 'active', location: '急診大廳' }); playVoice('歡迎回來。'); } 
       else { createAlert({ patientId: currentPatient.id, type: 'toilet', message: '已暫離前往洗手間', priority: 'low' }); updatePatientState(currentPatient.id, { rfid: 'away', location: '洗手間' }); playVoice('已為您保留號碼，請放心前往。'); }
-    } else if (type === 'sos') { createAlert({ patientId: currentPatient.id, type: 'sos', message: '🚨病患發出緊急求救🚨', priority: 'high' }); triggerVibe([1000, 500, 1000]); playVoice('已發送緊急求救，護理人員將盡快抵達。'); } 
-    else { createAlert({ patientId: currentPatient.id, type, message: type === 'ivEmpty' ? '點滴不滴/沒了' : type === 'ivPain' ? '漏血/會痛' : '其他需求', priority: type === 'ivEmpty' ? 'medium' : type === 'other' ? 'low' : 'high' }); playVoice('護理師已收到通知，請稍候。'); }
+    } else if (type === 'sos') {
+      if (helpRequests.sos) {
+        const existingAlert = alerts.find(a => a.patientId === currentPatient.id && a.type === 'sos');
+        if (existingAlert) resolveAlert(existingAlert.id);
+        playVoice('已為您取消緊急求救。');
+      } else {
+        createAlert({ patientId: currentPatient.id, type: 'sos', message: '🚨病患發出緊急求救🚨', priority: 'high' }); triggerVibe([1000, 500, 1000]); playVoice('已發送緊急求救，護理人員將盡快抵達。');
+      }
+    } else {
+      if (helpRequests[type]) {
+        const existingAlert = alerts.find(a => a.patientId === currentPatient.id && a.type === type);
+        if (existingAlert) resolveAlert(existingAlert.id);
+        playVoice('已取消該項呼叫。');
+      } else {
+        createAlert({ patientId: currentPatient.id, type, message: type === 'ivEmpty' ? '點滴不滴/沒了' : type === 'ivPain' ? '漏血/會痛' : '其他需求', priority: type === 'ivEmpty' ? 'medium' : type === 'other' ? 'low' : 'high' }); playVoice('護理師已收到通知，請稍候。');
+      }
+    }
   };
 
   const handleLabNavigation = (labId) => {
@@ -1885,19 +1900,22 @@ function PatientFamilyApp({ mode, currentPatient, patientState, systemConfig, up
                          <span className="text-6xl">{helpRequests.toilet ? '🚶‍♂️' : '🚻'}</span>
                          <div className="text-left ml-2"><span className="text-2xl font-bold block mb-1">{helpRequests.toilet ? '已暫離前往洗手間' : '去廁所 / 暫離'}</span><span className="text-sm opacity-80">{helpRequests.toilet ? '點擊可解除狀態' : '通知護理站為您保留號碼'}</span></div>
                      </button>
-                     <button onClick={() => handleHelpRequest('ivEmpty')} disabled={helpRequests.ivEmpty} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivEmpty ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
-                         <span className="text-5xl">{helpRequests.ivEmpty ? '⏳' : '💧'}</span><span className="font-bold text-xl">{helpRequests.ivEmpty ? '已通知護理師' : '點滴沒了'}</span>
+                     <button onClick={() => handleHelpRequest('ivEmpty')} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivEmpty ? 'bg-amber-100/90 border-amber-400 text-amber-800 active:scale-95' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
+                         <span className="text-5xl">{helpRequests.ivEmpty ? '⏳' : '💧'}</span>
+                         <div className="text-center"><span className="font-bold text-xl block mb-1">{helpRequests.ivEmpty ? '已通知' : '點滴沒了'}</span>{helpRequests.ivEmpty && <span className="text-sm opacity-80 underline">點擊可取消</span>}</div>
                      </button>
-                     <button onClick={() => handleHelpRequest('ivPain')} disabled={helpRequests.ivPain} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivPain ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
-                         <span className="text-5xl">{helpRequests.ivPain ? '⏳' : '🩹'}</span><span className="font-bold text-xl">{helpRequests.ivPain ? '已通知護理師' : '漏血/會痛'}</span>
+                     <button onClick={() => handleHelpRequest('ivPain')} className={`p-6 rounded-[1.5rem] flex flex-col items-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.ivPain ? 'bg-amber-100/90 border-amber-400 text-amber-800 active:scale-95' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
+                         <span className="text-5xl">{helpRequests.ivPain ? '⏳' : '🩹'}</span>
+                         <div className="text-center"><span className="font-bold text-xl block mb-1">{helpRequests.ivPain ? '已通知' : '漏血/會痛'}</span>{helpRequests.ivPain && <span className="text-sm opacity-80 underline">點擊可取消</span>}</div>
                      </button>
-                     <button onClick={() => handleHelpRequest('other')} disabled={helpRequests.other} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center justify-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.other ? 'bg-amber-50/90 border-amber-300/50 text-amber-700 cursor-not-allowed' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
-                         <span className="text-5xl">{helpRequests.other ? '⏳' : '💬'}</span><span className="font-bold text-2xl">{helpRequests.other ? '已通知護理師' : '其他需求'}</span>
+                     <button onClick={() => handleHelpRequest('other')} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center justify-center gap-4 backdrop-blur-md border shadow-sm transition-all ${helpRequests.other ? 'bg-amber-100/90 border-amber-400 text-amber-800 active:scale-95' : 'bg-white/70 border-white/50 active:scale-95 text-slate-800 hover:bg-white/90'}`}>
+                         <span className="text-5xl">{helpRequests.other ? '⏳' : '💬'}</span>
+                         <div className="text-left ml-2"><span className="font-bold text-2xl block mb-1">{helpRequests.other ? '已通知護理師' : '其他需求'}</span>{helpRequests.other && <span className="text-sm opacity-80 block underline">點擊可取消呼叫</span>}</div>
                      </button>
                      
-                     <button onClick={() => handleHelpRequest('sos')} disabled={!sosEnabled || helpRequests.sos} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center gap-4 border transition-transform backdrop-blur-md ${helpRequests.sos ? 'bg-amber-500/90 border-amber-400 text-white cursor-not-allowed' : !sosEnabled ? 'bg-slate-100/50 text-slate-400 border-slate-200/50 cursor-not-allowed' : 'bg-gradient-to-r from-rose-500/90 to-red-500/90 border-rose-400 text-white active:scale-95 shadow-lg'}`}>
+                     <button onClick={() => handleHelpRequest('sos')} disabled={!sosEnabled} className={`col-span-2 p-6 rounded-[1.5rem] flex items-center gap-4 border transition-transform backdrop-blur-md ${helpRequests.sos ? 'bg-amber-500/90 border-amber-400 text-white active:scale-95 shadow-lg' : !sosEnabled ? 'bg-slate-100/50 text-slate-400 border-slate-200/50 cursor-not-allowed' : 'bg-gradient-to-r from-rose-500/90 to-red-500/90 border-rose-400 text-white active:scale-95 shadow-lg'}`}>
                          <Power className="w-12 h-12 ml-2" />
-                         <div className="text-left ml-4"><span className="text-3xl font-black block tracking-wider mb-1">緊急求救 SOS</span><span className="text-sm opacity-90">{helpRequests.sos ? '🚨 救援已派發，請稍候' : !sosEnabled ? '未開放此功能' : '點擊立即通知護理站'}</span></div>
+                         <div className="text-left ml-4"><span className="text-3xl font-black block tracking-wider mb-1">緊急求救 SOS</span><span className="text-sm opacity-90">{helpRequests.sos ? '🚨 救援已派發 (點擊可取消)' : !sosEnabled ? '未開放此功能' : '點擊立即通知護理站'}</span></div>
                      </button>
                  </div>
               )}
